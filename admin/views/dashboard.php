@@ -146,7 +146,7 @@ $next_scan = $scheduler->get_next_scan_time();
             <small><?php printf(
                         __('Version %s | Last Updated: %s | By %s', 'themewire-security'),
                         TWSS_VERSION,
-                        '2025-07-14 23:02:42',
+                        '2025-07-14 23:35:07',
                         'josephjerryrhule'
                     );
                     ?></small>

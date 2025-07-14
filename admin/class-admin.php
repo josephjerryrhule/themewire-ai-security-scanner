@@ -121,15 +121,16 @@ class Themewire_Security_Admin
         if (strpos($screen->id, 'themewire-security') !== false) {
             wp_enqueue_script($this->plugin_name, TWSS_PLUGIN_URL . 'admin/assets/js/themewire-security-admin.js', array('jquery'), $this->version, true);
 
-            // Remove reference to React app since we're using the default WP admin UI
-            // wp_enqueue_script($this->plugin_name . '-react', TWSS_PLUGIN_URL . 'admin/react-app/build/index.js', array(), $this->version, true);
+            // Get current scan ID if exists
+            $current_scan_id = get_option('twss_current_scan_id');
 
             wp_localize_script($this->plugin_name, 'twss_data', array(
                 'ajax_url' => admin_url('admin-ajax.php'),
                 'admin_url' => admin_url(),
                 'nonce' => wp_create_nonce('twss_nonce'),
                 'scan_in_progress' => $this->scanner->is_scan_in_progress(),
-                'has_interrupted_scan' => get_option('twss_current_scan_id') ? true : false,
+                'has_interrupted_scan' => !empty($current_scan_id),
+                'current_scan_id' => $current_scan_id,
                 'next_scan' => $this->scheduler->get_next_scan_time(),
                 'version' => $this->version,
                 'has_update' => $this->has_update(),

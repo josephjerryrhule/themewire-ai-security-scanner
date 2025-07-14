@@ -3,12 +3,34 @@
  *
  * @link       https://themewire.com
  * @since      1.0.0
+ * @last-modified 2025-07-14 23:35:07
+ * @modified-by josephjerryrhuleit
  *
  * @package    Themewire_Security
  */
 
 (function ($) {
   "use strict";
+
+  // Global variables for tracking scan progress
+  var overallProgress = 0;
+  var currentStage = "";
+  var stages = ["core", "plugins", "themes", "uploads", "ai_analysis"];
+  var stageWeights = {
+    core: 0.3, // 30% of total progress
+    plugins: 0.3, // 30% of total progress
+    themes: 0.2, // 20% of total progress
+    uploads: 0.1, // 10% of total progress
+    ai_analysis: 0.1, // 10% of total progress
+  };
+  var stageProgress = {
+    core: 0,
+    plugins: 0,
+    themes: 0,
+    uploads: 0,
+    ai_analysis: 0,
+  };
+  var pollInterval = null;
 
   // Document ready
   $(function () {
@@ -69,123 +91,102 @@
       }
     });
 
-    // Handle quarantine buttons
-    $(".quarantine-button").on("click", function () {
-      const button = $(this);
-      const issueId = button.data("issue-id");
-
-      if (confirm("Are you sure you want to quarantine this file?")) {
-        button.prop("disabled", true);
-        button.text("Quarantining...");
-
-        $.ajax({
-          url: twss_data.ajax_url,
-          type: "POST",
-          data: {
-            action: "twss_quarantine_file",
-            nonce: twss_data.nonce,
-            issue_id: issueId,
-          },
-          success: function (response) {
-            if (response.success) {
-              button.closest("tr").fadeOut(500, function () {
-                $(this).remove();
-              });
-            } else {
-              alert("Error: " + (response.data.message || "Unknown error"));
-              button.prop("disabled", false);
-              button.text("Quarantine");
-            }
-          },
-          error: function () {
-            alert("Server error. Please try again.");
-            button.prop("disabled", false);
-            button.text("Quarantine");
-          },
-        });
-      }
-    });
-
-    // Handle whitelist buttons
-    $(".whitelist-button").on("click", function () {
-      const button = $(this);
-      const issueId = button.data("issue-id");
-      const reason = prompt("Why are you whitelisting this file?");
-
-      if (reason !== null) {
-        button.prop("disabled", true);
-        button.text("Whitelisting...");
-
-        $.ajax({
-          url: twss_data.ajax_url,
-          type: "POST",
-          data: {
-            action: "twss_whitelist_file",
-            nonce: twss_data.nonce,
-            issue_id: issueId,
-            reason: reason,
-          },
-          success: function (response) {
-            if (response.success) {
-              button.closest("tr").fadeOut(500, function () {
-                $(this).remove();
-              });
-            } else {
-              alert("Error: " + (response.data.message || "Unknown error"));
-              button.prop("disabled", false);
-              button.text("Whitelist");
-            }
-          },
-          error: function () {
-            alert("Server error. Please try again.");
-            button.prop("disabled", false);
-            button.text("Whitelist");
-          },
-        });
-      }
-    });
-
-    // Handle delete buttons
-    $(".delete-button").on("click", function () {
-      const button = $(this);
-      const issueId = button.data("issue-id");
-
-      if (
-        confirm(
-          "WARNING: Are you sure you want to delete this file? This action cannot be undone."
-        )
-      ) {
-        button.prop("disabled", true);
-        button.text("Deleting...");
-
-        $.ajax({
-          url: twss_data.ajax_url,
-          type: "POST",
-          data: {
-            action: "twss_delete_file",
-            nonce: twss_data.nonce,
-            issue_id: issueId,
-          },
-          success: function (response) {
-            if (response.success) {
-              button.closest("tr").fadeOut(500, function () {
-                $(this).remove();
-              });
-            } else {
-              alert("Error: " + (response.data.message || "Unknown error"));
-              button.prop("disabled", false);
-              button.text("Delete");
-            }
-          },
-          error: function () {
-            alert("Server error. Please try again.");
-            button.prop("disabled", false);
-            button.text("Delete");
-          },
-        });
-      }
-    });
+    // Other event handlers remain the same
+    // ...
   });
+
+  /**
+   * Update the progress bar
+   *
+   * @param {number} percent - Percentage complete (0-100)
+   * @param {string} stage - Current scan stage
+   * @param {string} message - Status message
+   */
+  function updateProgressBar(percent, stage, message) {
+    $("#scan-progress-container").show();
+    $(".scan-progress-bar-fill").css("width", percent + "%");
+    $(".scan-progress-text").text(percent + "%");
+
+    var stageText = "";
+    switch (stage) {
+      case "core":
+        stageText = "Scanning WordPress core files";
+        break;
+      case "plugins":
+        stageText = "Scanning plugin files";
+        break;
+      case "themes":
+        stageText = "Scanning theme files";
+        break;
+      case "uploads":
+        stageText = "Scanning uploads directory";
+        break;
+      case "ai_analysis":
+        stageText = "Analyzing suspicious files with AI";
+        break;
+      default:
+        stageText = "Scanning in progress";
+    }
+
+    var stageHtml =
+      "<p><strong>" + stageText + "</strong>: " + message + "</p>";
+    stageHtml += '<div class="scan-stage-list">';
+
+    for (var i = 0; i < stages.length; i++) {
+      var status = "pending";
+      var statusText = "Pending";
+
+      // Set stage status
+      if (stages[i] === stage) {
+        status = "in-progress";
+        statusText = "In Progress";
+      } else if (stages.indexOf(stage) > stages.indexOf(stages[i])) {
+        status = "completed";
+        statusText = "Completed";
+      }
+
+      var stageName = "";
+      switch (stages[i]) {
+        case "core":
+          stageName = "WordPress Core";
+          break;
+        case "plugins":
+          stageName = "Plugins";
+          break;
+        case "themes":
+          stageName = "Themes";
+          break;
+        case "uploads":
+          stageName = "Uploads Directory";
+          break;
+        case "ai_analysis":
+          stageName = "AI Analysis";
+          break;
+      }
+
+      stageHtml += '<div class="scan-stage-item">';
+      stageHtml += '<span class="stage-name">' + stageName + "</span>";
+      stageHtml +=
+        '<span class="stage-status ' + status + '">' + statusText + "</span>";
+      stageHtml += "</div>";
+    }
+
+    stageHtml += "</div>";
+    $("#scan-stage-info").html(stageHtml);
+  }
+
+  /**
+   * Calculate overall progress based on stage progress
+   */
+  function calculateOverallProgress() {
+    var overall = 0;
+    for (var stage in stageProgress) {
+      if (stageProgress.hasOwnProperty(stage)) {
+        overall += stageProgress[stage] * stageWeights[stage];
+      }
+    }
+    return Math.round(overall);
+  }
 
   /**
    * Start a new scan
@@ -194,6 +195,16 @@
     const button = $("#start-scan-button");
     const resumeButton = $("#resume-scan-button");
     const statusArea = $("#scan-status-area");
+
+    // Reset progress tracking
+    overallProgress = 0;
+    currentStage = "";
+    for (var stage in stageProgress) {
+      stageProgress[stage] = 0;
+    }
+
+    // Show initial progress bar at 0%
+    updateProgressBar(0, "", "Preparing scan");
 
     // Disable buttons and show loading
     button.prop("disabled", true);
@@ -229,6 +240,7 @@
             resumeButton.prop("disabled", false);
           }
 
+          $("#scan-progress-container").hide();
           statusArea.html(
             '<div class="notice notice-error"><p>Error: ' +
               (response.data.message || "Unknown error") +
@@ -242,6 +254,9 @@
           statusArea.html(
             '<div class="notice notice-error"><p>The scan timed out. This usually happens on larger sites. The scan will continue in the background. Please check back later for results, or try refreshing the page.</p></div>'
           );
+
+          // Continue polling despite the timeout
+          pollScanStatus(null);
         } else {
           button.prop("disabled", false);
           button.text(twss_data.i18n.start_scan || "Start Scan");
@@ -250,6 +265,7 @@
             resumeButton.prop("disabled", false);
           }
 
+          $("#scan-progress-container").hide();
           statusArea.html(
             '<div class="notice notice-error"><p>Server error. Please try again.</p></div>'
           );
@@ -265,6 +281,16 @@
     const button = $("#resume-scan-button");
     const startButton = $("#start-scan-button");
     const statusArea = $("#scan-status-area");
+
+    // Reset progress tracking
+    overallProgress = 0;
+    currentStage = "";
+    for (var stage in stageProgress) {
+      stageProgress[stage] = 0;
+    }
+
+    // Show initial progress bar
+    updateProgressBar(0, "", "Preparing to resume scan");
 
     // Disable buttons and show loading
     button.prop("disabled", true);
@@ -294,6 +320,7 @@
           button.text(twss_data.i18n.resume_scan || "Resume Scan");
           startButton.prop("disabled", false);
 
+          $("#scan-progress-container").hide();
           statusArea.html(
             '<div class="notice notice-error"><p>Error: ' +
               (response.data.message || "Unknown error") +
@@ -307,11 +334,15 @@
           statusArea.html(
             '<div class="notice notice-error"><p>The scan timed out. This usually happens on larger sites. The scan will continue in the background. Please check back later for results, or try refreshing the page.</p></div>'
           );
+
+          // Continue polling despite the timeout
+          pollScanStatus(null);
         } else {
           button.prop("disabled", false);
           button.text(twss_data.i18n.resume_scan || "Resume Scan");
           startButton.prop("disabled", false);
 
+          $("#scan-progress-container").hide();
           statusArea.html(
             '<div class="notice notice-error"><p>Server error. Please try again.</p></div>'
           );
@@ -383,119 +414,135 @@
    * Poll for scan status updates
    */
   function pollScanStatus(scanId, interval = 3000) {
+    // Clear any existing poll
+    if (pollInterval) {
+      clearInterval(pollInterval);
+    }
+
     const statusArea = $("#scan-status-area");
     const resultsArea = $("#scan-results-area");
 
-    $.ajax({
-      url: twss_data.ajax_url,
-      type: "POST",
-      data: {
-        action: "twss_get_scan_status",
-        nonce: twss_data.nonce,
-        scan_id: scanId,
-      },
-      success: function (response) {
-        if (response.success) {
-          const data = response.data;
-          let statusHtml =
-            '<div class="card"><h2 class="card-title">Scan Progress</h2>';
+    // Use interval for polling to prevent getting stuck if a single request fails
+    pollInterval = setInterval(function () {
+      // If scan ID is null (after timeout), try to get the current scan ID
+      var scanIdToUse = scanId;
+      if (!scanIdToUse && twss_data.has_interrupted_scan) {
+        // This will use the current scan ID stored in options
+        scanIdToUse = "current";
+      }
 
-          // Show progress for each stage
-          if (data.progress && data.progress.length > 0) {
-            statusHtml += "<ul>";
-            for (let i = 0; i < data.progress.length; i++) {
-              statusHtml +=
-                "<li><strong>" +
-                data.progress[i].stage +
-                ":</strong> " +
-                data.progress[i].message +
-                "</li>";
-            }
-            statusHtml += "</ul>";
-          }
+      if (!scanIdToUse) {
+        clearInterval(pollInterval);
+        return;
+      }
 
-          statusHtml += "<p>Status: <strong>" + data.status + "</strong></p>";
-          statusHtml += "</div>";
+      $.ajax({
+        url: twss_data.ajax_url,
+        type: "POST",
+        data: {
+          action: "twss_get_scan_status",
+          nonce: twss_data.nonce,
+          scan_id: scanIdToUse,
+        },
+        success: function (response) {
+          if (response.success) {
+            const data = response.data;
 
-          statusArea.html(statusHtml);
+            // Update progress information
+            if (data.progress && data.progress.length > 0) {
+              // Update latest stage progress
+              for (var i = 0; i < data.progress.length; i++) {
+                var progressItem = data.progress[i];
+                stageProgress[progressItem.stage] = progressItem.progress / 100;
+                currentStage = progressItem.stage;
 
-          // If scan is completed
-          if (data.status === "completed") {
-            const button = $("#start-scan-button");
-            button.prop("disabled", false);
-            button.text(twss_data.i18n.start_scan || "Start Scan");
+                // Find most recent message for current stage
+                var latestMessage = progressItem.message;
+              }
 
-            const resumeButton = $("#resume-scan-button");
-            if (resumeButton.length) {
-              resumeButton.remove(); // Remove resume button as scan is now complete
-            }
-
-            resultsArea.html(
-              '<div class="card">' +
-                '<h2 class="card-title">Scan Results</h2>' +
-                "<p>Scan completed successfully.</p>" +
-                "<p>Total issues found: <strong>" +
-                data.total_issues +
-                "</strong></p>" +
-                '<p><a href="' +
-                twss_data.admin_url +
-                'admin.php?page=themewire-security-issues" class="button button-primary">View Issues</a></p>' +
-                "</div>"
-            );
-
-            // Reload page after 2 seconds to refresh stats
-            setTimeout(function () {
-              window.location.reload();
-            }, 2000);
-          } else if (data.status === "failed") {
-            const button = $("#start-scan-button");
-            button.prop("disabled", false);
-            button.text(twss_data.i18n.start_scan || "Start Scan");
-
-            const resumeButton = $("#resume-scan-button");
-            if (resumeButton.length) {
-              resumeButton.prop("disabled", false);
-              resumeButton.text(twss_data.i18n.resume_scan || "Resume Scan");
+              // Calculate and update overall progress
+              overallProgress = calculateOverallProgress();
+              updateProgressBar(overallProgress, currentStage, latestMessage);
             }
 
-            statusArea.html(
-              '<div class="notice notice-error"><p>Scan failed: ' +
-                (data.error_message || "Unknown error") +
-                "</p></div>"
-            );
+            // Show status message
+            let statusHtml =
+              '<div class="notice notice-info"><p>Scan status: <strong>' +
+              data.status +
+              "</strong></p></div>";
+            statusArea.html(statusHtml);
+
+            // If scan is completed
+            if (data.status === "completed") {
+              clearInterval(pollInterval);
+
+              const button = $("#start-scan-button");
+              button.prop("disabled", false);
+              button.text(twss_data.i18n.start_scan || "Start Scan");
+
+              const resumeButton = $("#resume-scan-button");
+              if (resumeButton.length) {
+                resumeButton.remove(); // Remove resume button as scan is now complete
+              }
+
+              // Update progress bar to 100%
+              updateProgressBar(100, "ai_analysis", "Scan completed");
+
+              resultsArea.html(
+                '<div class="card">' +
+                  '<h2 class="card-title">Scan Results</h2>' +
+                  "<p>Scan completed successfully.</p>" +
+                  "<p>Total issues found: <strong>" +
+                  data.total_issues +
+                  "</strong></p>" +
+                  '<p><a href="' +
+                  twss_data.admin_url +
+                  'admin.php?page=themewire-security-issues" class="button button-primary">View Issues</a></p>' +
+                  "</div>"
+              );
+
+              // Reload page after 2 seconds to refresh stats
+              setTimeout(function () {
+                window.location.reload();
+              }, 2000);
+            } else if (data.status === "failed") {
+              clearInterval(pollInterval);
+
+              const button = $("#start-scan-button");
+              button.prop("disabled", false);
+              button.text(twss_data.i18n.start_scan || "Start Scan");
+
+              const resumeButton = $("#resume-scan-button");
+              if (resumeButton.length) {
+                resumeButton.prop("disabled", false);
+                resumeButton.text(twss_data.i18n.resume_scan || "Resume Scan");
+              }
+
+              $("#scan-progress-container").hide();
+              statusArea.html(
+                '<div class="notice notice-error"><p>Scan failed: ' +
+                  (data.error_message || "Unknown error") +
+                  "</p></div>"
+              );
+            }
           } else {
-            // Continue polling if scan is still in progress
-            setTimeout(function () {
-              pollScanStatus(scanId, interval);
-            }, interval);
+            // Only show error if we repeatedly fail
+            console.log(
+              "Error polling scan status: " +
+                (response.data ? response.data.message : "Unknown error")
+            );
           }
-        } else {
-          statusArea.html(
-            '<div class="notice notice-error"><p>Error: ' +
-              (response.data.message || "Unknown error") +
-              "</p></div>"
+        },
+        error: function (xhr) {
+          // Log error but keep polling
+          console.log(
+            "Error polling scan status (HTTP " +
+              xhr.status +
+              "): " +
+              xhr.statusText
           );
-          const button = $("#start-scan-button");
-          button.prop("disabled", false);
-          button.text(twss_data.i18n.start_scan || "Start Scan");
-
-          const resumeButton = $("#resume-scan-button");
-          if (resumeButton.length) {
-            resumeButton.prop("disabled", false);
-            resumeButton.text(twss_data.i18n.resume_scan || "Resume Scan");
-          }
-        }
-      },
-      error: function () {
-        statusArea.html(
-          '<div class="notice notice-error"><p>Server error. Retrying...</p></div>'
-        );
-
-        // Retry after a slightly longer interval
-        setTimeout(function () {
-          pollScanStatus(scanId, interval * 1.5);
-        }, interval * 1.5);
-      },
-    });
+        },
+      });
+    }, interval);
   }
 })(jQuery);

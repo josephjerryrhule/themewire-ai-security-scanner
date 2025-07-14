@@ -1294,4 +1294,20 @@ class Themewire_Security_Scanner
         }
         $this->scan_in_progress = $status;
     }
+
+    /**
+     * Update scan progress for a specific stage
+     *
+     * @since    1.0.1
+     * @param    int       $scan_id     The scan ID
+     * @param    string    $stage       Stage name
+     * @param    int       $progress    Progress percentage (0-100)
+     * @param    string    $message     Progress message
+     * @param    float     $weight      Stage weight for overall progress
+     */
+    private function update_scan_stage_progress($scan_id, $stage, $progress, $message)
+    {
+        $this->database->update_scan_progress($scan_id, $stage, $progress, $message);
+        $this->update_scan_activity();
+    }
 }

@@ -132,3 +132,73 @@
     transform: rotate(360deg);
   }
 }
+
+/* Scan Progress Bar Styles */
+.scan-progress-wrapper {
+  margin: 20px 0;
+}
+
+.scan-progress-bar {
+  width: 100%;
+  height: 20px;
+  background-color: #f0f0f1;
+  border-radius: 5px;
+  overflow: hidden;
+  position: relative;
+  margin-bottom: 10px;
+}
+
+.scan-progress-bar-fill {
+  height: 100%;
+  background-color: #2271b1;
+  border-radius: 5px;
+  transition: width 0.5s ease-in-out;
+}
+
+.scan-progress-text {
+  text-align: center;
+  font-weight: bold;
+  margin-bottom: 15px;
+}
+
+.scan-stage-info {
+  margin-top: 15px;
+  background-color: #f8f9fa;
+  padding: 10px;
+  border-radius: 5px;
+  border-left: 4px solid #2271b1;
+}
+
+.scan-stage-list {
+  margin-top: 10px;
+}
+
+.scan-stage-item {
+  padding: 5px 0;
+  border-bottom: 1px solid #eee;
+}
+
+.scan-stage-item:last-child {
+  border-bottom: none;
+}
+
+.scan-stage-item .stage-name {
+  font-weight: bold;
+}
+
+.scan-stage-item .stage-status {
+  display: inline-block;
+  margin-left: 10px;
+}
+
+.stage-status.pending {
+  color: #999;
+}
+
+.stage-status.in-progress {
+  color: #2271b1;
+}
+
+.stage-status.completed {
+  color: #46b450;
+}

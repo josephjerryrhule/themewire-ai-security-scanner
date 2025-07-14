@@ -48,6 +48,21 @@ $scan = $wpdb->get_row("SELECT * FROM {$wpdb->prefix}twss_scans ORDER BY scan_da
         </button>
     </div>
 
+    <div id="scan-progress-container" style="display: none;" class="card">
+        <h2 class="card-title"><?php _e('Scan Progress', 'themewire-security'); ?></h2>
+
+        <div class="scan-progress-wrapper">
+            <div class="scan-progress-bar">
+                <div class="scan-progress-bar-fill" style="width: 0%;"></div>
+            </div>
+            <div class="scan-progress-text">0%</div>
+        </div>
+
+        <div id="scan-stage-info" class="scan-stage-info">
+            <p><?php _e('Preparing scan...', 'themewire-security'); ?></p>
+        </div>
+    </div>
+
     <div id="scan-status-area">
         <?php if ($scan_in_progress): ?>
             <div class="scan-status"><?php _e('Scan in progress...', 'themewire-security'); ?> <span class="loading-spinner"></span></div>

@@ -13,8 +13,8 @@
  * Domain Path: /languages
  * Requires PHP: 7.4
  * Requires at least: 5.6
- * Build Date: 2025-07-14
- * Last Modified: <?php echo date("Y-m-d H:i:s", filemtime(__FILE__)); ?>
+ * Build Date: <?php echo date('Y-m-d', filectime(__FILE__)); ?>
+ * Last Modified: <?php echo date('Y-m-d H:i:s', filemtime(__FILE__)); ?>
  * Modified By: Themewire LTD
  */
 
