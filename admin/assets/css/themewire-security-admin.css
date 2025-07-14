@@ -1,0 +1,132 @@
+/**
+ * Admin styles for Themewire AI Security Scanner
+ *
+ * @link       https://themewire.com
+ * @since      1.0.0
+ *
+ * @package    Themewire_Security
+ */
+
+.themewire-security-wrap {
+  max-width: 1200px;
+}
+
+.themewire-security-wrap .header-actions {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 20px;
+}
+
+.themewire-security-wrap .card {
+  background: #fff;
+  border: 1px solid #ccd0d4;
+  box-shadow: 0 1px 1px rgba(0, 0, 0, 0.04);
+  padding: 15px 20px;
+  margin-top: 20px;
+  border-radius: 5px;
+}
+
+.themewire-security-wrap .card-title {
+  margin-top: 0;
+  padding-bottom: 12px;
+  border-bottom: 1px solid #eee;
+}
+
+.themewire-security-wrap .stat-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(200px, 1fr));
+  gap: 15px;
+  margin-bottom: 20px;
+}
+
+.themewire-security-wrap .stat-card {
+  padding: 15px;
+  background-color: #f8f9fa;
+  border-radius: 5px;
+  border-left: 4px solid #2271b1;
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.1);
+}
+
+.themewire-security-wrap .stat-card.high-severity {
+  border-left: 4px solid #d63638;
+}
+
+.themewire-security-wrap .stat-card.medium-severity {
+  border-left: 4px solid #dba617;
+}
+
+.themewire-security-wrap .stat-card.low-severity {
+  border-left: 4px solid #72aee6;
+}
+
+.themewire-security-wrap .stat-label {
+  font-size: 14px;
+  color: #50575e;
+  margin-bottom: 8px;
+}
+
+.themewire-security-wrap .stat-number {
+  font-size: 24px;
+  font-weight: 600;
+  color: #1d2327;
+}
+
+.themewire-security-wrap .severity-high {
+  color: #d63638;
+  font-weight: bold;
+}
+
+.themewire-security-wrap .severity-medium {
+  color: #dba617;
+  font-weight: bold;
+}
+
+.themewire-security-wrap .severity-low {
+  color: #72aee6;
+}
+
+.themewire-security-wrap .action-buttons {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 5px;
+}
+
+.themewire-security-wrap .settings-form .card {
+  margin-bottom: 20px;
+}
+
+.themewire-security-wrap .plugin-meta {
+  color: #646970;
+  border-top: 1px solid #eee;
+  padding-top: 10px;
+  margin-top: 20px;
+}
+
+.themewire-security-wrap .update-available {
+  color: #d63638;
+  margin-left: 10px;
+}
+
+.themewire-security-wrap .file-path {
+  position: relative;
+  cursor: pointer;
+}
+
+.themewire-security-wrap .loading-spinner {
+  display: inline-block;
+  width: 20px;
+  height: 20px;
+  border: 3px solid rgba(0, 0, 0, 0.1);
+  border-radius: 50%;
+  border-top-color: #2271b1;
+  animation: spin 1s ease-in-out infinite;
+  vertical-align: middle;
+  margin-left: 10px;
+}
+
+@keyframes spin {
+  to {
+    transform: rotate(360deg);
+  }
+}
