@@ -36,9 +36,20 @@ if (isset($update_data->response[TWSS_PLUGIN_BASENAME])) {
 }
 
 // Get build information
-$build_date = isset($plugin_data['Build Date']) ? $plugin_data['Build Date'] : '2025-07-14';
-$last_modified = isset($plugin_data['Last Modified']) ? $plugin_data['Last Modified'] : '2025-07-14 23:02:42';
-$modified_by = isset($plugin_data['Modified By']) ? $plugin_data['Modified By'] : 'josephjerryrhule';
+// Get build date from plugin file creation time
+$plugin_file = TWSS_PLUGIN_DIR . 'themewire-ai-security-scanner.php';
+$build_date = date('Y-m-d', filectime($plugin_file));
+
+// Get last modified date from plugin file modification time
+$last_modified = date('Y-m-d H:i:s', filemtime($plugin_file));
+
+// Try to get last modified by from git, fallback to unknown
+$modified_by = 'unknown';
+$git_cmd = 'cd ' . escapeshellarg(dirname($plugin_file)) . ' && git log -1 --pretty=format:"%an" -- ' . escapeshellarg(basename($plugin_file));
+$git_output = @shell_exec($git_cmd);
+if ($git_output) {
+    $modified_by = trim($git_output);
+}
 
 // Get repository information
 $repo_url = "https://github.com/" . TWSS_GITHUB_USERNAME . "/" . TWSS_GITHUB_REPO;
