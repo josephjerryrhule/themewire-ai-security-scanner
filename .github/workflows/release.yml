@@ -1,5 +1,10 @@
 name: Release Management
 
+permissions:
+  contents: write
+  actions: write
+  pull-requests: write
+
 on:
   workflow_dispatch:
     inputs:
@@ -35,6 +40,7 @@ jobs:
         with:
           token: ${{ secrets.GITHUB_TOKEN }}
           fetch-depth: 0
+          persist-credentials: true
 
       - name: Setup PHP
         uses: shivammathur/setup-php@v2
@@ -69,13 +75,31 @@ jobs:
             sed -i "s/\"version\": \".*\"/\"version\": \"$NEW_VERSION\"/" package.json
           fi
 
+      - name: Setup GitHub CLI
+        run: |
+          # GitHub CLI is pre-installed on GitHub runners
+          echo "${{ secrets.GITHUB_TOKEN }}" | gh auth login --with-token
+
       - name: Commit and push changes
         run: |
-          git config --local user.email "action@github.com"
-          git config --local user.name "GitHub Action"
+          # Use GitHub CLI to get authenticated user info
+          USER_EMAIL=$(gh api user --jq '.email // empty')
+          USER_NAME=$(gh api user --jq '.name // .login')
+          
+          # Fallback to actor info if user email is private
+          if [ -z "$USER_EMAIL" ] || [ "$USER_EMAIL" = "null" ]; then
+            USER_EMAIL="${{ github.actor }}@users.noreply.github.com"
+          fi
+          if [ -z "$USER_NAME" ] || [ "$USER_NAME" = "null" ]; then
+            USER_NAME="${{ github.actor }}"
+          fi
+          
+          echo "Committing as: $USER_NAME <$USER_EMAIL>"
+          git config --local user.email "$USER_EMAIL"
+          git config --local user.name "$USER_NAME"
           git add .
           git commit -m "Auto-bump version to ${{ steps.bump_version.outputs.new_version }}" || exit 0
-          git push
+          git push origin main
 
       - name: Create production build
         run: |
@@ -106,6 +130,7 @@ jobs:
         with:
           token: ${{ secrets.GITHUB_TOKEN }}
           fetch-depth: 0
+          persist-credentials: true
 
       - name: Setup PHP
         uses: shivammathur/setup-php@v2
@@ -154,13 +179,31 @@ jobs:
             sed -i "s/\"version\": \".*\"/\"version\": \"$NEW_VERSION\"/" package.json
           fi
 
+      - name: Setup GitHub CLI
+        run: |
+          # GitHub CLI is pre-installed on GitHub runners
+          echo "${{ secrets.GITHUB_TOKEN }}" | gh auth login --with-token
+
       - name: Commit and push changes
         run: |
-          git config --local user.email "action@github.com"
-          git config --local user.name "GitHub Action"
+          # Use GitHub CLI to get authenticated user info
+          USER_EMAIL=$(gh api user --jq '.email // empty')
+          USER_NAME=$(gh api user --jq '.name // .login')
+          
+          # Fallback to actor info if user email is private
+          if [ -z "$USER_EMAIL" ] || [ "$USER_EMAIL" = "null" ]; then
+            USER_EMAIL="${{ github.actor }}@users.noreply.github.com"
+          fi
+          if [ -z "$USER_NAME" ] || [ "$USER_NAME" = "null" ]; then
+            USER_NAME="${{ github.actor }}"
+          fi
+          
+          echo "Committing as: $USER_NAME <$USER_EMAIL>"
+          git config --local user.email "$USER_EMAIL"
+          git config --local user.name "$USER_NAME"
           git add .
           git commit -m "${{ github.event.inputs.version_type }} release: v${{ steps.bump_version.outputs.new_version }}"
-          git push
+          git push origin main
 
       - name: Create production build
         run: |
