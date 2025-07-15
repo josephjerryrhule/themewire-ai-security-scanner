@@ -33,14 +33,14 @@ if [ -d "includes" ]; then
     cp -r includes "$TEMP_DIR/$PLUGIN_NAME/"
 fi
 
-# Copy optimized assets
+# Optimize assets (but don't run npm build to avoid loops)
 echo "🎨 Optimizing assets..."
 
-# Create optimized CSS (minify if possible)
+# Install production dependencies if package.json exists (but don't run build)
 if command -v npx &> /dev/null && [ -f package.json ]; then
-    echo "📦 Running npm build process..."
-    npm install --production
-    npm run build 2>/dev/null || echo "No build script found"
+    echo "📦 Installing production dependencies..."
+    npm install --production --silent
+    # Note: Removed npm run build to prevent circular dependency
 fi
 
 # Remove development files from admin assets

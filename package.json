@@ -1,0 +1,37 @@
+{
+  "name": "themewire-ai-security-scanner",
+  "version": "1.0.4",
+  "description": "AI-powered WordPress security scanner that detects, fixes, and quarantines malware and security vulnerabilities",
+  "main": "themewire-ai-security-scanner.php",
+  "scripts": {
+    "version:patch": "./scripts/version-bump.sh patch",
+    "version:minor": "./scripts/version-bump.sh minor", 
+    "version:major": "./scripts/version-bump.sh major",
+    "build": "./scripts/build-production.sh",
+    "build:latest": "./scripts/build-latest.sh",
+    "release": "./scripts/release.sh",
+    "release:draft": "./scripts/release.sh --draft",
+    "release:prerelease": "./scripts/release.sh --prerelease",
+    "clean": "./scripts/clean.sh",
+    "status": "./scripts/status.sh",
+    "help": "./scripts/help.sh"
+  },
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/josephjerryrhule/themewire-ai-security-scanner.git"
+  },
+  "keywords": [
+    "wordpress",
+    "security",
+    "scanner",
+    "malware",
+    "ai",
+    "plugin"
+  ],
+  "author": "Themewire LTD",
+  "license": "GPL-2.0+",
+  "homepage": "https://github.com/josephjerryrhule/themewire-ai-security-scanner",
+  "engines": {
+    "node": ">=14.0.0"
+  }
+}
