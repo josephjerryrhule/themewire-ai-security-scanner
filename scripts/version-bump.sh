@@ -120,14 +120,14 @@ echo -e "${BLUE}🚀 Pushing to GitHub...${NC}"
 
 # First, try to pull any remote changes
 echo -e "${YELLOW}📥 Pulling latest changes...${NC}"
-if git pull --rebase; then
+if git pull --rebase themewire main; then
     echo -e "${GREEN}✅ Successfully pulled latest changes${NC}"
 else
     echo -e "${YELLOW}⚠️  No remote changes to pull${NC}"
 fi
 
 # Now try to push
-if git push; then
+if git push themewire main; then
     echo -e "${GREEN}✅ Successfully pushed to GitHub${NC}"
 else
     echo -e "${RED}❌ Failed to push to GitHub${NC}"
