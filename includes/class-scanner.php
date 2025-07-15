@@ -42,6 +42,24 @@ class Themewire_Security_Scanner
     private $fixer;
 
     /**
+     * Logger instance.
+     *
+     * @since    1.0.2
+     * @access   private
+     * @var      Themewire_Security_Logger    $logger
+     */
+    private $logger;
+
+    /**
+     * Rate limiter instance.
+     *
+     * @since    1.0.2
+     * @access   private
+     * @var      Themewire_Security_Rate_Limiter    $rate_limiter
+     */
+    private $rate_limiter;
+
+    /**
      * Scan in progress flag
      *
      * @since    1.0.0
@@ -69,6 +87,15 @@ class Themewire_Security_Scanner
         $this->ai_analyzer = new Themewire_Security_AI_Analyzer();
         $this->database = new Themewire_Security_Database();
         $this->fixer = new Themewire_Security_Fixer();
+
+        // Initialize logger and rate limiter if classes exist
+        if (class_exists('Themewire_Security_Logger')) {
+            $this->logger = new Themewire_Security_Logger();
+        }
+
+        if (class_exists('Themewire_Security_Rate_Limiter')) {
+            $this->rate_limiter = new Themewire_Security_Rate_Limiter();
+        }
 
         // Try to increase PHP time limit for long-running scans
         $this->increase_execution_time();
@@ -106,12 +133,19 @@ class Themewire_Security_Scanner
                 // Old stuck scan, reset it
                 delete_transient('twss_scan_in_progress');
                 delete_transient('twss_scan_last_activity');
+                if ($this->logger) {
+                    $this->logger->warning('Detected stuck scan, resetting scan status');
+                }
             } else {
                 return array(
                     'success' => false,
                     'message' => __('A scan is already in progress', 'themewire-security')
                 );
             }
+        }
+
+        if ($this->logger) {
+            $this->logger->info('Starting new security scan');
         }
 
         // Set scan in progress and record activity time
@@ -146,6 +180,9 @@ class Themewire_Security_Scanner
 
             // Update scan status
             $this->database->update_scan_status($scan_id, 'completed');
+            if ($this->logger) {
+                $this->logger->info('Scan completed successfully', array('scan_id' => $scan_id));
+            }
 
             // Get scan summary
             $summary = $this->database->get_scan_summary($scan_id);
@@ -160,6 +197,14 @@ class Themewire_Security_Scanner
                 'summary' => $summary
             );
         } catch (Exception $e) {
+            if ($this->logger) {
+                $this->logger->error('Scan failed', array(
+                    'scan_id' => $scan_id,
+                    'error' => $e->getMessage(),
+                    'trace' => $e->getTraceAsString()
+                ));
+            }
+
             $this->database->update_scan_status($scan_id, 'failed', $e->getMessage());
             $this->set_scan_in_progress(false);
             delete_transient('twss_scan_last_activity');
@@ -481,22 +526,40 @@ class Themewire_Security_Scanner
                             continue;
                         }
 
-                        // Scan file for common malware patterns
+                        // First do basic malware scan
                         $scan_result = $this->scan_file_for_malware($file);
 
                         if ($scan_result['suspicious']) {
-                            $this->database->add_issue(
-                                $scan_id,
-                                'suspicious_code',
-                                $file,
-                                sprintf(__('Suspicious code found in plugin file: %s', 'themewire-security'), $scan_result['reason']),
-                                'medium'
-                            );
-                            $issues_found++;
+                            // Use the fixer's advanced validation for plugins
+                            $validation = $this->fixer->validate_plugin_file($file);
 
-                            // Queue file for AI analysis
-                            $this->ai_analyzer->queue_file_for_analysis($scan_id, $file);
+                            if ($validation['is_malicious'] || $scan_result['suspicious']) {
+                                $confidence_text = '';
+                                if (isset($validation['confidence'])) {
+                                    $confidence_text = sprintf(' (Confidence: %d%%)', $validation['confidence']);
+                                }
+
+                                $description = sprintf(__('Suspicious code found in plugin file: %s%s', 'themewire-security'), $scan_result['reason'], $confidence_text);
+
+                                if (isset($validation['indicators']) && !empty($validation['indicators'])) {
+                                    $description .= ' Indicators: ' . implode(', ', $validation['indicators']);
+                                }
+
+                                $this->database->add_issue(
+                                    $scan_id,
+                                    'suspicious_code',
+                                    $file,
+                                    $description,
+                                    $validation['confidence'] >= 80 ? 'high' : ($validation['confidence'] >= 50 ? 'medium' : 'low')
+                                );
+                                $issues_found++;
+
+                                // Queue file for AI analysis
+                                $this->ai_analyzer->queue_file_for_analysis($scan_id, $file);
+                            }
                         }
+
+                        $files_scanned++;
                     }
 
                     // Save checkpoint after each batch
@@ -610,12 +673,26 @@ class Themewire_Security_Scanner
                             $scan_result = $this->scan_file_for_malware($file);
 
                             if ($scan_result['suspicious']) {
+                                // Use advanced validation for themes
+                                $validation = $this->fixer->advanced_malware_analysis($file);
+
+                                $confidence_text = '';
+                                if (isset($validation['confidence'])) {
+                                    $confidence_text = sprintf(' (Confidence: %d%%)', $validation['confidence']);
+                                }
+
+                                $description = sprintf(__('Suspicious code found in theme file: %s%s', 'themewire-security'), $scan_result['reason'], $confidence_text);
+
+                                if (isset($validation['indicators']) && !empty($validation['indicators'])) {
+                                    $description .= ' Indicators: ' . implode(', ', $validation['indicators']);
+                                }
+
                                 $this->database->add_issue(
                                     $scan_id,
                                     'suspicious_code',
                                     $file,
-                                    sprintf(__('Suspicious code found in theme file: %s', 'themewire-security'), $scan_result['reason']),
-                                    'medium'
+                                    $description,
+                                    $validation['confidence'] >= 80 ? 'high' : ($validation['confidence'] >= 50 ? 'medium' : 'low')
                                 );
                                 $issues_found++;
 

@@ -4,7 +4,7 @@
  * Plugin Name: Themewire AI Security Scanner
  * Plugin URI: https://github.com/josephjerryrhule/themewire-ai-security-scanner
  * Description: AI-powered WordPress security scanner that detects, fixes, and quarantines malware and security vulnerabilities.
- * Version: 1.0.1
+ * Version: 1.0.2
  * Author: Themewire LTD
  * Author URI: https://themewire.co
  * License: GPL-2.0+
@@ -24,7 +24,7 @@ if (!defined('WPINC')) {
 }
 
 // Define plugin constants
-define('TWSS_VERSION', '1.0.1');
+define('TWSS_VERSION', '1.0.2');
 define('TWSS_PLUGIN_DIR', plugin_dir_path(__FILE__));
 define('TWSS_PLUGIN_URL', plugin_dir_url(__FILE__));
 define('TWSS_PLUGIN_BASENAME', plugin_basename(__FILE__));
@@ -36,8 +36,12 @@ define('TWSS_GITHUB_REPO', 'themewire-ai-security-scanner');
  */
 function activate_themewire_security_scanner()
 {
-    require_once TWSS_PLUGIN_DIR . 'includes/class-activator.php';
-    Themewire_Security_Activator::activate();
+    try {
+        require_once TWSS_PLUGIN_DIR . 'includes/class-activator.php';
+        Themewire_Security_Activator::activate();
+    } catch (Exception $e) {
+        wp_die('Plugin activation failed: ' . $e->getMessage());
+    }
 }
 
 /**
@@ -45,8 +49,12 @@ function activate_themewire_security_scanner()
  */
 function deactivate_themewire_security_scanner()
 {
-    require_once TWSS_PLUGIN_DIR . 'includes/class-deactivator.php';
-    Themewire_Security_Deactivator::deactivate();
+    try {
+        require_once TWSS_PLUGIN_DIR . 'includes/class-deactivator.php';
+        Themewire_Security_Deactivator::deactivate();
+    } catch (Exception $e) {
+        error_log('Plugin deactivation error: ' . $e->getMessage());
+    }
 }
 
 register_activation_hook(__FILE__, 'activate_themewire_security_scanner');
@@ -60,9 +68,9 @@ require_once TWSS_PLUGIN_DIR . 'includes/class-github-updater.php';
 // Only initialize GitHub updater in admin area
 if (is_admin()) {
     $updater = new Themewire_Security_GitHub_Updater(
-        TWSS_GITHUB_USERNAME,
-        TWSS_GITHUB_REPO,
-        __FILE__
+        __FILE__,
+        TWSS_GITHUB_USERNAME . '/' . TWSS_GITHUB_REPO,
+        TWSS_VERSION
     );
 }
 
@@ -77,8 +85,18 @@ require_once TWSS_PLUGIN_DIR . 'includes/class-themewire-security.php';
  */
 function run_themewire_security_scanner()
 {
-    $plugin = new Themewire_Security();
-    $plugin->run();
+    try {
+        $plugin = new Themewire_Security();
+        $plugin->run();
+    } catch (Exception $e) {
+        error_log('Themewire Security Scanner error: ' . $e->getMessage());
+
+        if (is_admin()) {
+            add_action('admin_notices', function () use ($e) {
+                echo '<div class="notice notice-error"><p>Themewire Security Scanner encountered an error: ' . esc_html($e->getMessage()) . '</p></div>';
+            });
+        }
+    }
 }
 
 run_themewire_security_scanner();

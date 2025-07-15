@@ -67,6 +67,15 @@ class Themewire_Security_Admin
     private $scheduler;
 
     /**
+     * AI Analyzer instance
+     *
+     * @since    1.0.0
+     * @access   private
+     * @var      Themewire_Security_AI_Analyzer    $ai_analyzer
+     */
+    private $ai_analyzer;
+
+    /**
      * Initialize the class and set its properties.
      *
      * @since    1.0.0
@@ -84,17 +93,9 @@ class Themewire_Security_Admin
         $this->scheduler = new Themewire_Security_Scheduler();
         $this->ai_analyzer = new Themewire_Security_AI_Analyzer();
 
-        // Register AJAX handlers
-        add_action('wp_ajax_twss_start_scan', array($this, 'ajax_start_scan'));
-        add_action('wp_ajax_twss_resume_scan', array($this, 'ajax_resume_scan'));
-        add_action('wp_ajax_twss_get_scan_status', array($this, 'ajax_get_scan_status'));
-        add_action('wp_ajax_twss_fix_issue', array($this, 'ajax_fix_issue'));
-        add_action('wp_ajax_twss_quarantine_file', array($this, 'ajax_quarantine_file'));
-        add_action('wp_ajax_twss_whitelist_file', array($this, 'ajax_whitelist_file'));
-        add_action('wp_ajax_twss_delete_file', array($this, 'ajax_delete_file'));
-        add_action('wp_ajax_twss_test_openai_api', array($this, 'ajax_test_openai_api'));
-        add_action('wp_ajax_twss_test_gemini_api', array($this, 'ajax_test_gemini_api'));
+        // AJAX handlers are now registered in the main plugin class
     }
+
     /**
      * Register the stylesheets for the admin area.
      *
@@ -223,6 +224,137 @@ class Themewire_Security_Admin
         } else {
             wp_send_json_error($result);
         }
+    }
+
+    /**
+     * AJAX handler for disconnecting OAuth
+     *
+     * @since    1.0.2
+     */
+    public function ajax_disconnect_oauth()
+    {
+        check_ajax_referer('twss_nonce', 'nonce');
+
+        if (!current_user_can('manage_options')) {
+            wp_send_json_error(__('You do not have permission to perform this action', 'themewire-security'));
+        }
+
+        $provider = isset($_POST['provider']) ? sanitize_text_field($_POST['provider']) : '';
+
+        if (!in_array($provider, ['openai', 'gemini'])) {
+            wp_send_json_error(__('Invalid provider', 'themewire-security'));
+        }
+
+        // Clear the OAuth token
+        if ($provider === 'openai') {
+            delete_option('twss_openai_oauth_token');
+        } else {
+            delete_option('twss_gemini_oauth_token');
+        }
+
+        wp_send_json_success(array(
+            'message' => sprintf(__('Successfully disconnected from %s', 'themewire-security'), ucfirst($provider))
+        ));
+    }
+
+    /**
+     * AJAX handler for bulk file actions
+     *
+     * @since    1.0.2
+     */
+    public function ajax_bulk_file_action()
+    {
+        check_ajax_referer('twss_nonce', 'nonce');
+
+        if (!current_user_can('manage_options')) {
+            wp_send_json_error(__('You do not have permission to perform this action', 'themewire-security'));
+        }
+
+        $bulk_action = isset($_POST['bulk_action']) ? sanitize_text_field($_POST['bulk_action']) : '';
+        $files = isset($_POST['files']) ? array_map('intval', $_POST['files']) : array();
+
+        if (empty($bulk_action) || empty($files)) {
+            wp_send_json_error(__('Invalid request parameters', 'themewire-security'));
+        }
+
+        if (!in_array($bulk_action, ['fix', 'quarantine', 'delete', 'whitelist'])) {
+            wp_send_json_error(__('Invalid bulk action', 'themewire-security'));
+        }
+
+        global $wpdb;
+        $table_name = $wpdb->prefix . 'twss_issues';
+
+        $success_count = 0;
+        $error_count = 0;
+        $results = array();
+
+        foreach ($files as $issue_id) {
+            // Get the issue details
+            $issue = $wpdb->get_row($wpdb->prepare(
+                "SELECT * FROM {$table_name} WHERE id = %d",
+                $issue_id
+            ), ARRAY_A);
+
+            if (!$issue) {
+                $error_count++;
+                continue;
+            }
+
+            try {
+                switch ($bulk_action) {
+                    case 'fix':
+                        $result = $this->fixer->fix_issue($issue_id);
+                        break;
+                    case 'quarantine':
+                        $result = $this->fixer->quarantine_file($issue['file_path']);
+                        break;
+                    case 'delete':
+                        $result = $this->fixer->delete_file($issue['file_path']);
+                        break;
+                    case 'whitelist':
+                        $result = $this->fixer->whitelist_file($issue['file_path']);
+                        break;
+                }
+
+                if ($result && isset($result['success']) && $result['success']) {
+                    $success_count++;
+                    // Update issue status
+                    $wpdb->update(
+                        $table_name,
+                        array('status' => $bulk_action === 'whitelist' ? 'whitelisted' : 'resolved'),
+                        array('id' => $issue_id),
+                        array('%s'),
+                        array('%d')
+                    );
+                } else {
+                    $error_count++;
+                }
+            } catch (Exception $e) {
+                $error_count++;
+                $results[] = sprintf(
+                    __('Error processing %s: %s', 'themewire-security'),
+                    basename($issue['file_path']),
+                    $e->getMessage()
+                );
+            }
+        }
+
+        $message = sprintf(
+            __('Processed %d files successfully, %d errors', 'themewire-security'),
+            $success_count,
+            $error_count
+        );
+
+        if ($error_count > 0) {
+            $message .= '. ' . __('Some files could not be processed.', 'themewire-security');
+        }
+
+        wp_send_json_success(array(
+            'message' => $message,
+            'success_count' => $success_count,
+            'error_count' => $error_count,
+            'details' => $results
+        ));
     }
 
     /**
@@ -463,16 +595,22 @@ class Themewire_Security_Admin
      */
     public function ajax_quarantine_file()
     {
+        // Add debugging
+        error_log('TWSS: ajax_quarantine_file called');
+        error_log('TWSS: POST data: ' . print_r($_POST, true));
+
         check_ajax_referer('twss_nonce', 'nonce');
 
         if (!current_user_can('manage_options')) {
-            wp_send_json_error(__('You do not have permission to perform this action', 'themewire-security'));
+            error_log('TWSS: Permission denied for user');
+            wp_send_json_error(array('message' => __('You do not have permission to perform this action', 'themewire-security')));
         }
 
         $issue_id = isset($_POST['issue_id']) ? intval($_POST['issue_id']) : null;
 
         if (!$issue_id) {
-            wp_send_json_error(__('Invalid issue ID', 'themewire-security'));
+            error_log('TWSS: Invalid issue ID: ' . $issue_id);
+            wp_send_json_error(array('message' => __('Invalid issue ID', 'themewire-security')));
         }
 
         global $wpdb;
@@ -482,10 +620,15 @@ class Themewire_Security_Admin
         ), ARRAY_A);
 
         if (!$issue) {
-            wp_send_json_error(__('Issue not found', 'themewire-security'));
+            error_log('TWSS: Issue not found for ID: ' . $issue_id);
+            wp_send_json_error(array('message' => __('Issue not found', 'themewire-security')));
         }
 
+        error_log('TWSS: Found issue: ' . print_r($issue, true));
+
         $result = $this->fixer->quarantine_file($issue['scan_id'], $issue['file_path']);
+
+        error_log('TWSS: Quarantine result: ' . print_r($result, true));
 
         if ($result['success']) {
             $this->database->mark_issue_as_fixed($issue_id);
@@ -502,17 +645,23 @@ class Themewire_Security_Admin
      */
     public function ajax_whitelist_file()
     {
+        // Add debugging
+        error_log('TWSS: ajax_whitelist_file called');
+        error_log('TWSS: POST data: ' . print_r($_POST, true));
+
         check_ajax_referer('twss_nonce', 'nonce');
 
         if (!current_user_can('manage_options')) {
-            wp_send_json_error(__('You do not have permission to perform this action', 'themewire-security'));
+            error_log('TWSS: Permission denied for user');
+            wp_send_json_error(array('message' => __('You do not have permission to perform this action', 'themewire-security')));
         }
 
         $issue_id = isset($_POST['issue_id']) ? intval($_POST['issue_id']) : null;
         $reason = isset($_POST['reason']) ? sanitize_text_field($_POST['reason']) : '';
 
         if (!$issue_id) {
-            wp_send_json_error(__('Invalid issue ID', 'themewire-security'));
+            error_log('TWSS: Invalid issue ID: ' . $issue_id);
+            wp_send_json_error(array('message' => __('Invalid issue ID', 'themewire-security')));
         }
 
         global $wpdb;
@@ -522,10 +671,15 @@ class Themewire_Security_Admin
         ), ARRAY_A);
 
         if (!$issue) {
-            wp_send_json_error(__('Issue not found', 'themewire-security'));
+            error_log('TWSS: Issue not found for ID: ' . $issue_id);
+            wp_send_json_error(array('message' => __('Issue not found', 'themewire-security')));
         }
 
+        error_log('TWSS: Found issue: ' . print_r($issue, true));
+
         $result = $this->database->add_to_whitelist($issue['file_path'], $reason);
+
+        error_log('TWSS: Whitelist result: ' . ($result ? 'success' : 'failed'));
 
         if ($result) {
             $this->database->update_issue_status($issue['scan_id'], $issue['file_path'], 'whitelisted');
@@ -534,7 +688,7 @@ class Themewire_Security_Admin
                 'message' => __('File added to whitelist', 'themewire-security')
             ));
         } else {
-            wp_send_json_error(__('Failed to add file to whitelist', 'themewire-security'));
+            wp_send_json_error(array('message' => __('Failed to add file to whitelist', 'themewire-security')));
         }
     }
 
@@ -544,6 +698,56 @@ class Themewire_Security_Admin
      * @since    1.0.0
      */
     public function ajax_delete_file()
+    {
+        // Add debugging
+        error_log('TWSS: ajax_delete_file called');
+        error_log('TWSS: POST data: ' . print_r($_POST, true));
+
+        check_ajax_referer('twss_nonce', 'nonce');
+
+        if (!current_user_can('manage_options')) {
+            error_log('TWSS: Permission denied for user');
+            wp_send_json_error(array('message' => __('You do not have permission to perform this action', 'themewire-security')));
+        }
+
+        $issue_id = isset($_POST['issue_id']) ? intval($_POST['issue_id']) : null;
+
+        if (!$issue_id) {
+            error_log('TWSS: Invalid issue ID: ' . $issue_id);
+            wp_send_json_error(array('message' => __('Invalid issue ID', 'themewire-security')));
+        }
+
+        global $wpdb;
+        $issue = $wpdb->get_row($wpdb->prepare(
+            "SELECT * FROM {$wpdb->prefix}twss_issues WHERE id = %d",
+            $issue_id
+        ), ARRAY_A);
+
+        if (!$issue) {
+            error_log('TWSS: Issue not found for ID: ' . $issue_id);
+            wp_send_json_error(array('message' => __('Issue not found', 'themewire-security')));
+        }
+
+        error_log('TWSS: Found issue: ' . print_r($issue, true));
+
+        $result = $this->fixer->delete_file($issue['scan_id'], $issue['file_path']);
+
+        error_log('TWSS: Delete result: ' . print_r($result, true));
+
+        if ($result['success']) {
+            $this->database->mark_issue_as_fixed($issue_id);
+            wp_send_json_success($result);
+        } else {
+            wp_send_json_error($result);
+        }
+    }
+
+    /**
+     * AJAX handler for restoring WordPress core files
+     *
+     * @since    1.0.2
+     */
+    public function ajax_restore_core_file()
     {
         check_ajax_referer('twss_nonce', 'nonce');
 
@@ -567,7 +771,7 @@ class Themewire_Security_Admin
             wp_send_json_error(__('Issue not found', 'themewire-security'));
         }
 
-        $result = $this->fixer->delete_file($issue['scan_id'], $issue['file_path']);
+        $result = $this->fixer->restore_core_file($issue['scan_id'], $issue['file_path']);
 
         if ($result['success']) {
             $this->database->mark_issue_as_fixed($issue_id);
@@ -575,5 +779,23 @@ class Themewire_Security_Admin
         } else {
             wp_send_json_error($result);
         }
+    }
+
+    /**
+     * AJAX handler for testing AJAX functionality
+     *
+     * @since    1.0.2
+     */
+    public function ajax_test_connection()
+    {
+        error_log('TWSS: ajax_test_connection called');
+
+        check_ajax_referer('twss_nonce', 'nonce');
+
+        if (!current_user_can('manage_options')) {
+            wp_send_json_error(array('message' => 'Permission denied'));
+        }
+
+        wp_send_json_success(array('message' => 'AJAX connection successful!'));
     }
 }

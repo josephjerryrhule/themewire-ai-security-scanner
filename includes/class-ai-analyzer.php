@@ -77,6 +77,36 @@ class Themewire_Security_AI_Analyzer
     }
 
     /**
+     * Initialize AI clients with OAuth support
+     *
+     * @since    1.0.2
+     */
+    private function init_ai_clients_with_oauth()
+    {
+        $ai_provider = get_option('twss_ai_provider', 'openai');
+
+        if ($ai_provider === 'openai') {
+            $api_key = get_option('twss_openai_api_key', '');
+            $oauth_token = get_option('twss_openai_oauth_token', '');
+
+            if (!empty($api_key)) {
+                $this->init_openai_client($api_key);
+            } else if (!empty($oauth_token)) {
+                $this->init_openai_oauth_client($oauth_token);
+            }
+        } else if ($ai_provider === 'gemini') {
+            $api_key = get_option('twss_gemini_api_key', '');
+            $oauth_token = get_option('twss_gemini_oauth_token', '');
+
+            if (!empty($api_key)) {
+                $this->init_gemini_client($api_key);
+            } else if (!empty($oauth_token)) {
+                $this->init_gemini_oauth_client($oauth_token);
+            }
+        }
+    }
+
+    /**
      * Initialize OpenAI API client
      *
      * @since    1.0.0
@@ -100,6 +130,32 @@ class Themewire_Security_AI_Analyzer
         // Simple implementation - in production you might use a proper SDK
         $this->gemini_client = new stdClass();
         $this->gemini_client->api_key = $api_key;
+    }
+
+    /**
+     * Initialize OpenAI OAuth client
+     *
+     * @since    1.0.2
+     * @param    string    $oauth_token    OAuth token
+     */
+    private function init_openai_oauth_client($oauth_token)
+    {
+        $this->openai_client = new stdClass();
+        $this->openai_client->oauth_token = $oauth_token;
+        $this->openai_client->is_oauth = true;
+    }
+
+    /**
+     * Initialize Gemini OAuth client
+     *
+     * @since    1.0.2
+     * @param    string    $oauth_token    OAuth token
+     */
+    private function init_gemini_oauth_client($oauth_token)
+    {
+        $this->gemini_client = new stdClass();
+        $this->gemini_client->oauth_token = $oauth_token;
+        $this->gemini_client->is_oauth = true;
     }
 
     /**
@@ -341,7 +397,8 @@ class Themewire_Security_AI_Analyzer
     private function send_gemini_request($prompt)
     {
         $api_key = $this->gemini_client->api_key;
-        $url = 'https://generativelanguage.googleapis.com/v1/models/gemini-pro:generateContent?key=' . $api_key;
+        // Updated to use the correct model name
+        $url = 'https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent?key=' . $api_key;
 
         $headers = array(
             'Content-Type: application/json'
@@ -384,7 +441,9 @@ class Themewire_Security_AI_Analyzer
         if (isset($response_data['candidates'][0]['content']['parts'][0]['text'])) {
             return $response_data['candidates'][0]['content']['parts'][0]['text'];
         } else {
-            throw new Exception('Invalid API response');
+            // Log the error for debugging
+            error_log('Gemini API Error: ' . print_r($response_data, true));
+            throw new Exception('Invalid API response from Gemini');
         }
     }
 
@@ -573,7 +632,7 @@ class Themewire_Security_AI_Analyzer
 
             return array(
                 'success' => true,
-                'message' => __('OpenAI API key is valid and working!', 'themewire-security')
+                'message' => 'OpenAI API key is valid and working!'
             );
         } catch (Exception $e) {
             return array(
@@ -593,7 +652,8 @@ class Themewire_Security_AI_Analyzer
     public function test_gemini_api_key($api_key)
     {
         try {
-            $url = 'https://generativelanguage.googleapis.com/v1/models/gemini-pro:generateContent?key=' . $api_key;
+            // Updated to use the correct model name
+            $url = 'https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent?key=' . $api_key;
 
             $headers = array(
                 'Content-Type: application/json'
@@ -646,7 +706,7 @@ class Themewire_Security_AI_Analyzer
 
             return array(
                 'success' => true,
-                'message' => __('Google Gemini API key is valid and working!', 'themewire-security')
+                'message' => 'Google Gemini API key is valid and working!'
             );
         } catch (Exception $e) {
             return array(
@@ -654,5 +714,92 @@ class Themewire_Security_AI_Analyzer
                 'message' => $e->getMessage()
             );
         }
+    }
+
+    /**
+     * Check if any AI provider is available
+     *
+     * @since    1.0.2
+     * @return   boolean   True if any AI provider is configured
+     */
+    public function is_ai_available()
+    {
+        $openai_api_key = get_option('twss_openai_api_key', '');
+        $openai_oauth = get_option('twss_openai_oauth_token', '');
+        $gemini_api_key = get_option('twss_gemini_api_key', '');
+        $gemini_oauth = get_option('twss_gemini_oauth_token', '');
+
+        return !empty($openai_api_key) || !empty($openai_oauth) || !empty($gemini_api_key) || !empty($gemini_oauth);
+    }
+
+    /**
+     * Get available AI providers
+     *
+     * @since    1.0.2
+     * @return   array     List of available providers
+     */
+    public function get_available_providers()
+    {
+        $providers = array();
+
+        $openai_api_key = get_option('twss_openai_api_key', '');
+        $openai_oauth = get_option('twss_openai_oauth_token', '');
+        if (!empty($openai_api_key) || !empty($openai_oauth)) {
+            $providers[] = 'openai';
+        }
+
+        $gemini_api_key = get_option('twss_gemini_api_key', '');
+        $gemini_oauth = get_option('twss_gemini_oauth_token', '');
+        if (!empty($gemini_api_key) || !empty($gemini_oauth)) {
+            $providers[] = 'gemini';
+        }
+
+        return $providers;
+    }
+
+    /**
+     * Get OpenAI OAuth authorization URL
+     *
+     * @since    1.0.2
+     * @return   string    Authorization URL
+     */
+    public function get_openai_oauth_url()
+    {
+        $client_id = 'your-openai-app-client-id'; // This would be configured
+        $redirect_uri = admin_url('admin.php?page=themewire-security-oauth-callback');
+        $state = wp_create_nonce('openai_oauth_state');
+
+        $params = array(
+            'client_id' => $client_id,
+            'redirect_uri' => $redirect_uri,
+            'response_type' => 'code',
+            'scope' => 'api.read',
+            'state' => $state
+        );
+
+        return 'https://platform.openai.com/oauth/authorize?' . http_build_query($params);
+    }
+
+    /**
+     * Get Google OAuth authorization URL for Gemini
+     *
+     * @since    1.0.2
+     * @return   string    Authorization URL
+     */
+    public function get_gemini_oauth_url()
+    {
+        $client_id = 'your-google-app-client-id.googleusercontent.com'; // This would be configured
+        $redirect_uri = admin_url('admin.php?page=themewire-security-oauth-callback');
+        $state = wp_create_nonce('gemini_oauth_state');
+
+        $params = array(
+            'client_id' => $client_id,
+            'redirect_uri' => $redirect_uri,
+            'response_type' => 'code',
+            'scope' => 'https://www.googleapis.com/auth/generative-language',
+            'state' => $state
+        );
+
+        return 'https://accounts.google.com/oauth/authorize?' . http_build_query($params);
     }
 }

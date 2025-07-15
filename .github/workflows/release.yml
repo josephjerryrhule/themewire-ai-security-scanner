@@ -1,0 +1,182 @@
+name: Release Management
+
+on:
+  workflow_dispatch:
+    inputs:
+      version_type:
+        description: "Version bump type"
+        required: true
+        default: "patch"
+        type: choice
+        options:
+          - patch
+          - minor
+          - major
+      release_notes:
+        description: "Release notes"
+        required: false
+        default: ""
+
+  push:
+    branches:
+      - main
+    paths:
+      - "**.php"
+      - "**.js"
+      - "**.css"
+
+jobs:
+  auto-patch:
+    runs-on: ubuntu-latest
+    if: github.event_name == 'push'
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+        with:
+          token: ${{ secrets.GITHUB_TOKEN }}
+          fetch-depth: 0
+
+      - name: Setup PHP
+        uses: shivammathur/setup-php@v2
+        with:
+          php-version: "8.1"
+
+      - name: Get current version
+        id: current_version
+        run: |
+          VERSION=$(grep "Version:" themewire-ai-security-scanner.php | awk '{print $2}' | tr -d ' ')
+          echo "version=$VERSION" >> $GITHUB_OUTPUT
+
+      - name: Bump patch version
+        id: bump_version
+        run: |
+          CURRENT="${{ steps.current_version.outputs.version }}"
+          IFS='.' read -r major minor patch <<< "$CURRENT"
+          NEW_PATCH=$((patch + 1))
+          NEW_VERSION="$major.$minor.$NEW_PATCH"
+          echo "new_version=$NEW_VERSION" >> $GITHUB_OUTPUT
+
+      - name: Update version in files
+        run: |
+          NEW_VERSION="${{ steps.bump_version.outputs.new_version }}"
+
+          # Update main plugin file
+          sed -i "s/Version: .*/Version: $NEW_VERSION/" themewire-ai-security-scanner.php
+          sed -i "s/define('TWSS_VERSION', '.*');/define('TWSS_VERSION', '$NEW_VERSION');/" themewire-ai-security-scanner.php
+
+          # Update package.json if exists
+          if [ -f package.json ]; then
+            sed -i "s/\"version\": \".*\"/\"version\": \"$NEW_VERSION\"/" package.json
+          fi
+
+      - name: Commit and push changes
+        run: |
+          git config --local user.email "action@github.com"
+          git config --local user.name "GitHub Action"
+          git add .
+          git commit -m "Auto-bump version to ${{ steps.bump_version.outputs.new_version }}" || exit 0
+          git push
+
+      - name: Create production build
+        run: |
+          ./scripts/build-production.sh ${{ steps.bump_version.outputs.new_version }}
+
+      - name: Create release
+        uses: softprops/action-gh-release@v1
+        with:
+          tag_name: v${{ steps.bump_version.outputs.new_version }}
+          name: Release v${{ steps.bump_version.outputs.new_version }}
+          body: |
+            Auto-generated patch release
+
+            ## Changes
+            - Bug fixes and improvements
+            - Version bump to ${{ steps.bump_version.outputs.new_version }}
+          files: |
+            dist/themewire-ai-security-scanner-v${{ steps.bump_version.outputs.new_version }}.zip
+          draft: false
+          prerelease: false
+
+  manual-release:
+    runs-on: ubuntu-latest
+    if: github.event_name == 'workflow_dispatch'
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+        with:
+          token: ${{ secrets.GITHUB_TOKEN }}
+          fetch-depth: 0
+
+      - name: Setup PHP
+        uses: shivammathur/setup-php@v2
+        with:
+          php-version: "8.1"
+
+      - name: Get current version
+        id: current_version
+        run: |
+          VERSION=$(grep "Version:" themewire-ai-security-scanner.php | awk '{print $2}' | tr -d ' ')
+          echo "version=$VERSION" >> $GITHUB_OUTPUT
+
+      - name: Bump version
+        id: bump_version
+        run: |
+          CURRENT="${{ steps.current_version.outputs.version }}"
+          IFS='.' read -r major minor patch <<< "$CURRENT"
+
+          case "${{ github.event.inputs.version_type }}" in
+            "major")
+              NEW_MAJOR=$((major + 1))
+              NEW_VERSION="$NEW_MAJOR.0.0"
+              ;;
+            "minor")
+              NEW_MINOR=$((minor + 1))
+              NEW_VERSION="$major.$NEW_MINOR.0"
+              ;;
+            "patch")
+              NEW_PATCH=$((patch + 1))
+              NEW_VERSION="$major.$minor.$NEW_PATCH"
+              ;;
+          esac
+
+          echo "new_version=$NEW_VERSION" >> $GITHUB_OUTPUT
+
+      - name: Update version in files
+        run: |
+          NEW_VERSION="${{ steps.bump_version.outputs.new_version }}"
+
+          # Update main plugin file
+          sed -i "s/Version: .*/Version: $NEW_VERSION/" themewire-ai-security-scanner.php
+          sed -i "s/define('TWSS_VERSION', '.*');/define('TWSS_VERSION', '$NEW_VERSION');/" themewire-ai-security-scanner.php
+
+          # Update package.json if exists
+          if [ -f package.json ]; then
+            sed -i "s/\"version\": \".*\"/\"version\": \"$NEW_VERSION\"/" package.json
+          fi
+
+      - name: Commit and push changes
+        run: |
+          git config --local user.email "action@github.com"
+          git config --local user.name "GitHub Action"
+          git add .
+          git commit -m "${{ github.event.inputs.version_type }} release: v${{ steps.bump_version.outputs.new_version }}"
+          git push
+
+      - name: Create production build
+        run: |
+          ./scripts/build-production.sh ${{ steps.bump_version.outputs.new_version }}
+
+      - name: Create release
+        uses: softprops/action-gh-release@v1
+        with:
+          tag_name: v${{ steps.bump_version.outputs.new_version }}
+          name: Release v${{ steps.bump_version.outputs.new_version }}
+          body: |
+            ${{ github.event.inputs.release_notes }}
+
+            ## Version Type: ${{ github.event.inputs.version_type }}
+            Version bumped to ${{ steps.bump_version.outputs.new_version }}
+          files: |
+            dist/themewire-ai-security-scanner-v${{ steps.bump_version.outputs.new_version }}.zip
+          draft: false
+          prerelease: false

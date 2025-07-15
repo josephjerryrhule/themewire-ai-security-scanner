@@ -1,4 +1,5 @@
 <?php
+
 /**
  * The core plugin class.
  *
@@ -8,7 +9,8 @@
  * @package    Themewire_Security
  */
 
-class Themewire_Security {
+class Themewire_Security
+{
 
     /**
      * The loader that's responsible for maintaining and registering all hooks.
@@ -42,7 +44,8 @@ class Themewire_Security {
      *
      * @since    1.0.0
      */
-    public function __construct() {
+    public function __construct()
+    {
         if (defined('TWSS_VERSION')) {
             $this->version = TWSS_VERSION;
         } else {
@@ -61,16 +64,21 @@ class Themewire_Security {
      * @since    1.0.0
      * @access   private
      */
-    private function load_dependencies() {
+    private function load_dependencies()
+    {
         // Core loader
         require_once TWSS_PLUGIN_DIR . 'includes/class-loader.php';
-        
+
         // Internationalization
         require_once TWSS_PLUGIN_DIR . 'includes/class-i18n.php';
-        
+
         // Admin area
         require_once TWSS_PLUGIN_DIR . 'admin/class-admin.php';
-        
+
+        // Utility classes
+        require_once TWSS_PLUGIN_DIR . 'includes/class-logger.php';
+        require_once TWSS_PLUGIN_DIR . 'includes/class-rate-limiter.php';
+
         // Scanner functionality
         require_once TWSS_PLUGIN_DIR . 'includes/class-scanner.php';
         require_once TWSS_PLUGIN_DIR . 'includes/class-ai-analyzer.php';
@@ -87,7 +95,8 @@ class Themewire_Security {
      * @since    1.0.0
      * @access   private
      */
-    private function set_locale() {
+    private function set_locale()
+    {
         $plugin_i18n = new Themewire_Security_i18n();
         $this->loader->add_action('plugins_loaded', $plugin_i18n, 'load_plugin_textdomain');
     }
@@ -98,26 +107,39 @@ class Themewire_Security {
      * @since    1.0.0
      * @access   private
      */
-    private function define_admin_hooks() {
+    private function define_admin_hooks()
+    {
         $plugin_admin = new Themewire_Security_Admin($this->get_plugin_name(), $this->get_version());
-        
+
         // Admin scripts and styles
         $this->loader->add_action('admin_enqueue_scripts', $plugin_admin, 'enqueue_styles');
         $this->loader->add_action('admin_enqueue_scripts', $plugin_admin, 'enqueue_scripts');
-        
+
         // Admin menu
         $this->loader->add_action('admin_menu', $plugin_admin, 'add_plugin_admin_menu');
-        
+
         // Settings
         $this->loader->add_action('admin_init', $plugin_admin, 'register_settings');
-        
-        // Ajax handlers
-        $this->loader->add_action('wp_ajax_twss_start_scan', $plugin_admin, 'ajax_start_scan');
-        $this->loader->add_action('wp_ajax_twss_get_scan_status', $plugin_admin, 'ajax_get_scan_status');
-        $this->loader->add_action('wp_ajax_twss_fix_issue', $plugin_admin, 'ajax_fix_issue');
-        $this->loader->add_action('wp_ajax_twss_quarantine_file', $plugin_admin, 'ajax_quarantine_file');
-        $this->loader->add_action('wp_ajax_twss_whitelist_file', $plugin_admin, 'ajax_whitelist_file');
-        $this->loader->add_action('wp_ajax_twss_delete_file', $plugin_admin, 'ajax_delete_file');
+
+        // Ajax handlers - using add_action directly to ensure they work
+        add_action('wp_ajax_twss_start_scan', array($plugin_admin, 'ajax_start_scan'));
+        add_action('wp_ajax_twss_resume_scan', array($plugin_admin, 'ajax_resume_scan'));
+        add_action('wp_ajax_twss_get_scan_status', array($plugin_admin, 'ajax_get_scan_status'));
+        add_action('wp_ajax_twss_fix_issue', array($plugin_admin, 'ajax_fix_issue'));
+        add_action('wp_ajax_twss_quarantine_file', array($plugin_admin, 'ajax_quarantine_file'));
+        add_action('wp_ajax_twss_whitelist_file', array($plugin_admin, 'ajax_whitelist_file'));
+        add_action('wp_ajax_twss_delete_file', array($plugin_admin, 'ajax_delete_file'));
+        add_action('wp_ajax_twss_test_openai_api', array($plugin_admin, 'ajax_test_openai_api'));
+        add_action('wp_ajax_twss_test_gemini_api', array($plugin_admin, 'ajax_test_gemini_api'));
+        add_action('wp_ajax_twss_disconnect_oauth', array($plugin_admin, 'ajax_disconnect_oauth'));
+        add_action('wp_ajax_twss_bulk_file_action', array($plugin_admin, 'ajax_bulk_file_action'));
+        add_action('wp_ajax_twss_restore_core_file', array($plugin_admin, 'ajax_restore_core_file'));
+        add_action('wp_ajax_twss_test_connection', array($plugin_admin, 'ajax_test_connection'));
+
+        // Debug: Log that handlers are registered
+        if (defined('WP_DEBUG') && WP_DEBUG) {
+            error_log('TWSS: AJAX handlers registered');
+        }
     }
 
     /**
@@ -126,10 +148,11 @@ class Themewire_Security {
      * @since    1.0.0
      * @access   private
      */
-    private function define_scanner_hooks() {
+    private function define_scanner_hooks()
+    {
         $plugin_scanner = new Themewire_Security_Scanner();
         $plugin_scheduler = new Themewire_Security_Scheduler();
-        
+
         // Schedule daily scans
         $this->loader->add_action('twss_daily_scan', $plugin_scanner, 'run_scheduled_scan');
         $this->loader->add_action('admin_init', $plugin_scheduler, 'register_scan_schedule');
@@ -140,7 +163,8 @@ class Themewire_Security {
      *
      * @since    1.0.0
      */
-    public function run() {
+    public function run()
+    {
         $this->loader->run();
     }
 
@@ -150,7 +174,8 @@ class Themewire_Security {
      * @since     1.0.0
      * @return    string    The name of the plugin.
      */
-    public function get_plugin_name() {
+    public function get_plugin_name()
+    {
         return $this->plugin_name;
     }
 
@@ -160,7 +185,8 @@ class Themewire_Security {
      * @since     1.0.0
      * @return    Themewire_Security_Loader    Orchestrates the hooks of the plugin.
      */
-    public function get_loader() {
+    public function get_loader()
+    {
         return $this->loader;
     }
 
@@ -170,7 +196,8 @@ class Themewire_Security {
      * @since     1.0.0
      * @return    string    The version number of the plugin.
      */
-    public function get_version() {
+    public function get_version()
+    {
         return $this->version;
     }
 }
