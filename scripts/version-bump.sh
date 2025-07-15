@@ -108,17 +108,36 @@ fi
 
 # Git operations
 echo -e "${BLUE}📚 Git operations...${NC}"
-git add "$PLUGIN_FILE" "$PACKAGE_FILE" dist/ 2>/dev/null
+git add "$PLUGIN_FILE" "$PACKAGE_FILE"
 git commit -m "$VERSION_TYPE: bump version to $NEW_VERSION
 
 - Updated plugin version from $CURRENT_VERSION to $NEW_VERSION
 - Generated production build package
 - Ready for release"
 
+# Push to GitHub
+echo -e "${BLUE}🚀 Pushing to GitHub...${NC}"
+
+# First, try to pull any remote changes
+echo -e "${YELLOW}📥 Pulling latest changes...${NC}"
+if git pull --rebase; then
+    echo -e "${GREEN}✅ Successfully pulled latest changes${NC}"
+else
+    echo -e "${YELLOW}⚠️  No remote changes to pull${NC}"
+fi
+
+# Now try to push
+if git push; then
+    echo -e "${GREEN}✅ Successfully pushed to GitHub${NC}"
+else
+    echo -e "${RED}❌ Failed to push to GitHub${NC}"
+    echo -e "${YELLOW}💡 You may need to resolve conflicts and push manually: git push${NC}"
+fi
+
 echo -e "${GREEN}🎉 Version bump completed!${NC}"
 echo ""
 echo -e "${BLUE}Next steps:${NC}"
 echo -e "  ${YELLOW}1.${NC} Review changes: git show HEAD"
-echo -e "  ${YELLOW}2.${NC} Push changes: git push"
-echo -e "  ${YELLOW}3.${NC} Create release: npm run release"
+echo -e "  ${YELLOW}2.${NC} Create release: npm run release"
+echo -e "  ${YELLOW}3.${NC} GitHub Actions will auto-trigger on push"
 echo ""
