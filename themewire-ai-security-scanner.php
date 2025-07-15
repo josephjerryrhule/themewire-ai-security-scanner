@@ -63,16 +63,17 @@ register_deactivation_hook(__FILE__, 'deactivate_themewire_security_scanner');
 /**
  * Initialize GitHub updater.
  */
-require_once TWSS_PLUGIN_DIR . 'includes/class-github-updater.php';
+// Temporarily disabled to prevent fatal error
+// require_once TWSS_PLUGIN_DIR . 'includes/class-github-updater.php';
 
 // Only initialize GitHub updater in admin area
-if (is_admin()) {
-    $updater = new Themewire_Security_GitHub_Updater(
-        __FILE__,
-        TWSS_GITHUB_USERNAME . '/' . TWSS_GITHUB_REPO,
-        TWSS_VERSION
-    );
-}
+// if (is_admin()) {
+//     $updater = new Themewire_Security_GitHub_Updater(
+//         __FILE__,
+//         TWSS_GITHUB_USERNAME . '/' . TWSS_GITHUB_REPO,
+//         TWSS_VERSION
+//     );
+// }
 
 /**
  * The core plugin class that is used to define internationalization,
