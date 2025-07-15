@@ -70,9 +70,9 @@ jobs:
         run: |
           NEW_VERSION="${{ steps.bump_version.outputs.new_version }}"
 
-          # Update main plugin file
-          sed -i "s/Version: .*/Version: $NEW_VERSION/" themewire-ai-security-scanner.php
-          sed -i "s/define('TWSS_VERSION', '.*');/define('TWSS_VERSION', '$NEW_VERSION');/" themewire-ai-security-scanner.php
+          # Update main plugin file with more precise patterns
+          sed -i "s/\* Version: [0-9.]*/* Version: $NEW_VERSION/" themewire-ai-security-scanner.php
+          sed -i "s/define('TWSS_VERSION', '[0-9.]*');/define('TWSS_VERSION', '$NEW_VERSION');/" themewire-ai-security-scanner.php
 
           # Update package.json if exists
           if [ -f package.json ]; then
@@ -161,9 +161,9 @@ jobs:
         run: |
           NEW_VERSION="${{ steps.bump_version.outputs.new_version }}"
 
-          # Update main plugin file
-          sed -i "s/Version: .*/Version: $NEW_VERSION/" themewire-ai-security-scanner.php
-          sed -i "s/define('TWSS_VERSION', '.*');/define('TWSS_VERSION', '$NEW_VERSION');/" themewire-ai-security-scanner.php
+          # Update main plugin file with more precise patterns
+          sed -i "s/\* Version: [0-9.]*/* Version: $NEW_VERSION/" themewire-ai-security-scanner.php
+          sed -i "s/define('TWSS_VERSION', '[0-9.]*');/define('TWSS_VERSION', '$NEW_VERSION');/" themewire-ai-security-scanner.php
 
           # Update package.json if exists
           if [ -f package.json ]; then
