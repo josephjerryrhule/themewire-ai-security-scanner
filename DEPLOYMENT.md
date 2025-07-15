@@ -117,6 +117,18 @@ themewire-ai-security-scanner/
 4. **Manual Releases**: Use workflow dispatch for major/minor releases
 5. **Production Deployment**: Automated build and release creation
 
+### 🔧 GitHub Actions Setup
+
+For the automated deployment system to work properly, ensure:
+
+1. **Repository Permissions**: The workflow has `contents: write` permission (already configured)
+2. **Branch Protection**: If main branch is protected, allow GitHub Actions to push
+3. **Alternative Token Setup** (if needed):
+   - Go to GitHub Settings → Developer settings → Personal access tokens
+   - Create token with `repo` and `workflow` permissions
+   - Add as repository secret named `PAT_TOKEN`
+   - Update workflow to use `${{ secrets.PAT_TOKEN }}` instead of `${{ secrets.GITHUB_TOKEN }}`
+
 ### 📈 Benefits
 
 - **Zero Downtime**: Seamless update process
