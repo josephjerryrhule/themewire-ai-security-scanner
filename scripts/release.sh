@@ -143,13 +143,26 @@ RELEASE_NOTES="## Themewire AI Security Scanner v$CURRENT_VERSION
 ### 🔐 Verification
 To verify the package integrity:
 \`\`\`bash
+# For Linux:
 sha256sum themewire-ai-security-scanner-v$CURRENT_VERSION.zip
+# For macOS:
+shasum -a 256 themewire-ai-security-scanner-v$CURRENT_VERSION.zip
 # Should match: $CHECKSUM
 \`\`\`"
 
 # Use GitHub CLI if available
 if command -v gh &> /dev/null; then
     echo -e "${BLUE}📤 Creating GitHub release using GitHub CLI...${NC}"
+    
+    # First create and push the tag
+    echo -e "${YELLOW}🏷️  Creating and pushing tag v$CURRENT_VERSION...${NC}"
+    git tag "v$CURRENT_VERSION" 2>/dev/null || echo -e "${YELLOW}⚠️  Tag v$CURRENT_VERSION already exists locally${NC}"
+    
+    if git push themewire "v$CURRENT_VERSION" 2>/dev/null; then
+        echo -e "${GREEN}✅ Tag pushed successfully${NC}"
+    else
+        echo -e "${YELLOW}⚠️  Tag may already exist on remote${NC}"
+    fi
     
     RELEASE_CMD="gh release create v$CURRENT_VERSION \"$PACKAGE_FILE\" \"$CHECKSUM_FILE\" --title \"Release v$CURRENT_VERSION\" --notes \"$RELEASE_NOTES\""
     

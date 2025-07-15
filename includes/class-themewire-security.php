@@ -135,6 +135,7 @@ class Themewire_Security
         add_action('wp_ajax_twss_bulk_file_action', array($plugin_admin, 'ajax_bulk_file_action'));
         add_action('wp_ajax_twss_restore_core_file', array($plugin_admin, 'ajax_restore_core_file'));
         add_action('wp_ajax_twss_test_connection', array($plugin_admin, 'ajax_test_connection'));
+        add_action('wp_ajax_twss_analyze_issue', array($plugin_admin, 'ajax_analyze_issue'));
 
         // Debug: Log that handlers are registered
         if (defined('WP_DEBUG') && WP_DEBUG) {

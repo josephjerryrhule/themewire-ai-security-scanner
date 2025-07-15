@@ -675,3 +675,61 @@
   max-width: 300px;
   word-break: break-all;
 }
+
+/* Consistent orange button styling for all plugin buttons */
+.themewire-security-wrap .button.fix-issue-button,
+.themewire-security-wrap .button.quarantine-button,
+.themewire-security-wrap .button.whitelist-button,
+.themewire-security-wrap .button.delete-button,
+.themewire-security-wrap .button.restore-core-button,
+.themewire-security-wrap .button.ai-analyze-button,
+.themewire-security-wrap #bulk-fix-selected,
+.themewire-security-wrap #bulk-quarantine-selected,
+.themewire-security-wrap #bulk-delete-selected,
+.themewire-security-wrap #bulk-whitelist-selected {
+  background: #ff7342 !important;
+  color: white !important;
+  border: none !important;
+  border-radius: 3px !important;
+  font-size: 11px !important;
+  padding: 2px 8px !important;
+}
+
+/* Hover state for orange buttons */
+.themewire-security-wrap .button.fix-issue-button:hover,
+.themewire-security-wrap .button.quarantine-button:hover,
+.themewire-security-wrap .button.whitelist-button:hover,
+.themewire-security-wrap .button.delete-button:hover,
+.themewire-security-wrap .button.restore-core-button:hover,
+.themewire-security-wrap .button.ai-analyze-button:hover,
+.themewire-security-wrap #bulk-fix-selected:hover,
+.themewire-security-wrap #bulk-quarantine-selected:hover,
+.themewire-security-wrap #bulk-delete-selected:hover,
+.themewire-security-wrap #bulk-whitelist-selected:hover {
+  background: #e6653a !important;
+  color: white !important;
+}
+
+/* Disabled state for bulk buttons - maintain orange but faded */
+.themewire-security-wrap #bulk-fix-selected:disabled,
+.themewire-security-wrap #bulk-quarantine-selected:disabled,
+.themewire-security-wrap #bulk-delete-selected:disabled,
+.themewire-security-wrap #bulk-whitelist-selected:disabled {
+  background: #ff7342 !important;
+  color: white !important;
+  opacity: 0.6 !important;
+  cursor: not-allowed !important;
+}
+
+/* Loading state for buttons */
+.themewire-security-wrap .button.fix-issue-button:disabled,
+.themewire-security-wrap .button.quarantine-button:disabled,
+.themewire-security-wrap .button.whitelist-button:disabled,
+.themewire-security-wrap .button.delete-button:disabled,
+.themewire-security-wrap .button.restore-core-button:disabled,
+.themewire-security-wrap .button.ai-analyze-button:disabled {
+  background: #ff7342 !important;
+  color: white !important;
+  opacity: 0.8 !important;
+  cursor: wait !important;
+}

@@ -175,7 +175,7 @@ function is_wordpress_core_file($file_path)
                             <button type="submit" class="button" style="background: #FF7342; color: white; border: none; padding: 6px 12px; border-radius: 4px;">
                                 <?php _e('Filter', 'themewire-security'); ?>
                             </button>
-                            <a href="<?php echo admin_url('admin.php?page=' . $_GET['page']); ?>" class="button" style="margin-left: 5px;">
+                            <a href="<?php echo admin_url('admin.php?page=' . $_GET['page']); ?>" class="button" style="margin-left: 5px; background: #FF7342; color: white; border: none; padding: 6px 12px; border-radius: 4px;">
                                 <?php _e('Clear', 'themewire-security'); ?>
                             </a>
                         </div>
@@ -205,16 +205,16 @@ function is_wordpress_core_file($file_path)
                             <?php _e('Select All', 'themewire-security'); ?>
                         </label>
                         <span style="color: #000000; opacity: 0.7;">|</span>
-                        <button type="button" id="bulk-fix-selected" class="button" disabled>
+                        <button type="button" id="bulk-fix-selected" class="button" disabled style="background: #FF7342; color: white; border: none; border-radius: 3px;">
                             <?php _e('Fix', 'themewire-security'); ?>
                         </button>
-                        <button type="button" id="bulk-quarantine-selected" class="button" disabled>
+                        <button type="button" id="bulk-quarantine-selected" class="button" disabled style="background: #FF7342; color: white; border: none; border-radius: 3px;">
                             <?php _e('Quarantine', 'themewire-security'); ?>
                         </button>
-                        <button type="button" id="bulk-delete-selected" class="button" disabled>
+                        <button type="button" id="bulk-delete-selected" class="button" disabled style="background: #FF7342; color: white; border: none; border-radius: 3px;">
                             <?php _e('Delete', 'themewire-security'); ?>
                         </button>
-                        <button type="button" id="bulk-whitelist-selected" class="button" disabled>
+                        <button type="button" id="bulk-whitelist-selected" class="button" disabled style="background: #FF7342; color: white; border: none; border-radius: 3px;">
                             <?php _e('Whitelist', 'themewire-security'); ?>
                         </button>
                     </div>
@@ -310,9 +310,14 @@ function is_wordpress_core_file($file_path)
                                                 <?php endif; ?>
                                             </div>
                                         <?php else: ?>
-                                            <span style="color: #000000; opacity: 0.5; font-style: italic;">
-                                                <?php _e('No AI analysis available', 'themewire-security'); ?>
-                                            </span>
+                                            <div style="display: flex; align-items: center; gap: 8px;">
+                                                <span style="color: #000000; opacity: 0.5; font-style: italic;">
+                                                    <?php _e('No AI analysis available', 'themewire-security'); ?>
+                                                </span>
+                                                <button type="button" class="button ai-analyze-button" data-issue-id="<?php echo $issue['id']; ?>" style="font-size: 11px; padding: 2px 8px; background: #FF7342; color: white; border: none; border-radius: 3px;">
+                                                    <?php _e('Analyze', 'themewire-security'); ?>
+                                                </button>
+                                            </div>
                                         <?php endif; ?>
                                     </div>
                                 </td>
@@ -324,27 +329,27 @@ function is_wordpress_core_file($file_path)
                                         ?>
 
                                         <?php if ($is_core_file && ($issue['issue_type'] === 'core_file_missing' || $issue['issue_type'] === 'core_file_modified')): ?>
-                                            <button type="button" class="button button-primary restore-core-button" data-issue-id="<?php echo $issue['id']; ?>" style="font-size: 11px; padding: 2px 8px;">
+                                            <button type="button" class="button restore-core-button" data-issue-id="<?php echo $issue['id']; ?>" style="font-size: 11px; padding: 2px 8px; background: #FF7342; color: white; border: none; border-radius: 3px;">
                                                 <?php _e('Restore', 'themewire-security'); ?>
                                             </button>
                                         <?php endif; ?>
 
                                         <?php if (!empty($issue['suggested_fix']) && in_array($issue['suggested_fix'], ['fix', 'quarantine', 'delete']) && !$is_core_file): ?>
-                                            <button type="button" class="button button-secondary fix-issue-button" data-issue-id="<?php echo $issue['id']; ?>" style="font-size: 11px; padding: 2px 8px;">
+                                            <button type="button" class="button fix-issue-button" data-issue-id="<?php echo $issue['id']; ?>" style="font-size: 11px; padding: 2px 8px; background: #FF7342; color: white; border: none; border-radius: 3px;">
                                                 <?php _e('Fix', 'themewire-security'); ?>
                                             </button>
                                         <?php endif; ?>
 
-                                        <button type="button" class="button quarantine-button" data-issue-id="<?php echo $issue['id']; ?>" style="font-size: 11px; padding: 2px 8px;">
+                                        <button type="button" class="button quarantine-button" data-issue-id="<?php echo $issue['id']; ?>" style="font-size: 11px; padding: 2px 8px; background: #FF7342; color: white; border: none; border-radius: 3px;">
                                             <?php _e('Quarantine', 'themewire-security'); ?>
                                         </button>
 
-                                        <button type="button" class="button whitelist-button" data-issue-id="<?php echo $issue['id']; ?>" style="font-size: 11px; padding: 2px 8px;">
+                                        <button type="button" class="button whitelist-button" data-issue-id="<?php echo $issue['id']; ?>" style="font-size: 11px; padding: 2px 8px; background: #FF7342; color: white; border: none; border-radius: 3px;">
                                             <?php _e('Whitelist', 'themewire-security'); ?>
                                         </button>
 
                                         <?php if (!$is_core_file): ?>
-                                            <button type="button" class="button delete-button" data-issue-id="<?php echo $issue['id']; ?>" style="font-size: 11px; padding: 2px 8px; color: #d63638;">
+                                            <button type="button" class="button delete-button" data-issue-id="<?php echo $issue['id']; ?>" style="font-size: 11px; padding: 2px 8px; background: #FF7342; color: white; border: none; border-radius: 3px;">
                                                 <?php _e('Delete', 'themewire-security'); ?>
                                             </button>
                                         <?php endif; ?>

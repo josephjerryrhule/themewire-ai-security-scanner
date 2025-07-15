@@ -798,4 +798,76 @@ class Themewire_Security_Admin
 
         wp_send_json_success(array('message' => 'AJAX connection successful!'));
     }
+
+    /**
+     * AJAX handler for analyzing an individual issue with AI
+     *
+     * @since    1.0.0
+     */
+    public function ajax_analyze_issue()
+    {
+        check_ajax_referer('twss_nonce', 'nonce');
+
+        if (!current_user_can('manage_options')) {
+            wp_send_json_error(__('You do not have permission to perform this action', 'themewire-security'));
+        }
+
+        $issue_id = isset($_POST['issue_id']) ? intval($_POST['issue_id']) : null;
+
+        if (!$issue_id) {
+            wp_send_json_error(__('Invalid issue ID', 'themewire-security'));
+        }
+
+        // Get the issue from database
+        global $wpdb;
+        $issue = $wpdb->get_row($wpdb->prepare(
+            "SELECT * FROM {$wpdb->prefix}twss_issues WHERE id = %d",
+            $issue_id
+        ), ARRAY_A);
+
+        if (!$issue) {
+            wp_send_json_error(__('Issue not found', 'themewire-security'));
+        }
+
+        // Check if file still exists
+        if (!file_exists($issue['file_path'])) {
+            wp_send_json_error(__('File no longer exists', 'themewire-security'));
+        }
+
+        // Initialize the AI analyzer
+        $ai_analyzer = new Themewire_Security_AI_Analyzer();
+
+        try {
+            // Run AI analysis on the file
+            $analysis_result = $ai_analyzer->analyze_file($issue['file_path']);
+
+            if ($analysis_result && $analysis_result['success']) {
+                // Update the issue with AI analysis
+                $updated = $wpdb->update(
+                    $wpdb->prefix . 'twss_issues',
+                    array(
+                        'ai_analysis' => json_encode($analysis_result['analysis'])
+                    ),
+                    array('id' => $issue_id),
+                    array('%s'),
+                    array('%d')
+                );
+
+                if ($updated !== false) {
+                    wp_send_json_success(array(
+                        'message' => __('AI analysis completed successfully', 'themewire-security'),
+                        'analysis' => $analysis_result['analysis']
+                    ));
+                } else {
+                    wp_send_json_error(__('Failed to save AI analysis to database', 'themewire-security'));
+                }
+            } else {
+                $error_message = isset($analysis_result['message']) ? $analysis_result['message'] : __('AI analysis failed', 'themewire-security');
+                wp_send_json_error($error_message);
+            }
+        } catch (Exception $e) {
+            error_log('TWSS AI Analysis Error: ' . $e->getMessage());
+            wp_send_json_error(__('An error occurred during AI analysis', 'themewire-security'));
+        }
+    }
 }

@@ -81,7 +81,7 @@
 
     // Check if buttons exist
     var buttons = $(
-      ".fix-issue-button, .quarantine-button, .whitelist-button, .delete-button, .restore-core-button"
+      ".fix-issue-button, .quarantine-button, .whitelist-button, .delete-button, .restore-core-button, .ai-analyze-button"
     );
     console.log("Found", buttons.length, "action buttons on page");
 
@@ -218,6 +218,26 @@
             "Restoring...",
             "Restore Core File"
           );
+        }
+      });
+
+    $(document)
+      .off("click.twss-ai-analyze")
+      .on("click.twss-ai-analyze", ".ai-analyze-button", function (e) {
+        e.preventDefault();
+        e.stopPropagation();
+        console.log("AI analyze button clicked via delegation");
+        const button = $(this);
+        const issueId = button.data("issue-id");
+        console.log("Issue ID:", issueId);
+
+        // Confirm with user before running AI analysis
+        if (
+          confirm(
+            "Run AI analysis on this file? This will send the file content to the configured AI service for security analysis."
+          )
+        ) {
+          performAIAnalysis(button, issueId);
         }
       });
   }
@@ -1505,5 +1525,206 @@
         button.text(originalText);
       },
     });
+  }
+
+  /**
+   * Perform AI analysis on a specific issue
+   *
+   * @param {jQuery} button - The button that was clicked
+   * @param {number} issueId - The issue ID to analyze
+   */
+  function performAIAnalysis(button, issueId) {
+    console.log("performAIAnalysis called");
+    console.log("Issue ID:", issueId);
+    console.log("TWSS Data available:", !!twss_data);
+
+    // Validate inputs
+    if (!twss_data || !twss_data.ajax_url || !twss_data.nonce) {
+      console.error("TWSS data not available:", twss_data);
+      alert("Error: Plugin data not loaded properly. Please refresh the page.");
+      return;
+    }
+
+    if (!issueId) {
+      console.error("No issue ID provided");
+      alert("Error: No issue ID provided.");
+      return;
+    }
+
+    const originalText = button.text();
+    const loadingText = "Analyzing...";
+
+    button.prop("disabled", true);
+    button.text(loadingText);
+
+    const data = {
+      action: "twss_analyze_issue",
+      nonce: twss_data.nonce,
+      issue_id: issueId,
+    };
+
+    console.log("Sending AI analysis AJAX request with data:", data);
+
+    $.ajax({
+      url: twss_data.ajax_url,
+      type: "POST",
+      data: data,
+      timeout: 60000, // 60 second timeout for AI analysis
+      beforeSend: function (xhr) {
+        console.log("AI analysis AJAX request starting...");
+      },
+      success: function (response, textStatus, xhr) {
+        console.log("AI analysis AJAX response received:");
+        console.log("Status:", textStatus);
+        console.log("Response:", response);
+
+        // Handle both JSON and string responses
+        let parsedResponse = response;
+        if (typeof response === "string") {
+          try {
+            parsedResponse = JSON.parse(response);
+          } catch (e) {
+            console.error("Failed to parse response as JSON:", response);
+            alert("Error: Invalid response from server. Response: " + response);
+            button.prop("disabled", false);
+            button.text(originalText);
+            return;
+          }
+        }
+
+        console.log("Parsed AI analysis response:", parsedResponse);
+
+        if (parsedResponse && parsedResponse.success) {
+          // Show success message
+          var successMessage =
+            parsedResponse.data && parsedResponse.data.message
+              ? parsedResponse.data.message
+              : "AI analysis completed successfully";
+
+          console.log("AI analysis successful:", successMessage);
+
+          // Create a temporary success notice
+          var notice = $(
+            '<div class="notice notice-success is-dismissible"><p>' +
+              successMessage +
+              "</p></div>"
+          );
+          $(".themewire-security-wrap h1").after(notice);
+
+          // Update the AI verdict column with the new analysis
+          const analysisData = parsedResponse.data.analysis;
+          if (analysisData) {
+            updateAIVerdictColumn(button, analysisData);
+          }
+
+          // Remove the analyze button
+          button.fadeOut(300, function () {
+            $(this).remove();
+          });
+
+          // Auto-dismiss the notice after 5 seconds
+          setTimeout(function () {
+            notice.fadeOut();
+          }, 5000);
+        } else {
+          console.error("AI analysis failed:", parsedResponse);
+          var errorMessage =
+            parsedResponse && parsedResponse.data && parsedResponse.data.message
+              ? parsedResponse.data.message
+              : parsedResponse && parsedResponse.message
+              ? parsedResponse.message
+              : "AI analysis failed";
+
+          alert("Error: " + errorMessage);
+          button.prop("disabled", false);
+          button.text(originalText);
+        }
+      },
+      error: function (xhr, status, error) {
+        console.error("AI analysis AJAX error occurred:");
+        console.error("Status:", status);
+        console.error("Error:", error);
+        console.error("Response Text:", xhr.responseText);
+
+        var errorMessage = "AI analysis failed due to server error.";
+
+        // Check for specific HTTP error codes
+        switch (xhr.status) {
+          case 403:
+            errorMessage =
+              "Permission denied. Please refresh the page and try again.";
+            break;
+          case 404:
+            errorMessage =
+              "AI analysis endpoint not found. Please check plugin installation.";
+            break;
+          case 500:
+            errorMessage =
+              "Internal server error during AI analysis. Check error logs.";
+            break;
+          case 0:
+            errorMessage = "Network error. Please check your connection.";
+            break;
+          default:
+            if (xhr.responseText) {
+              errorMessage =
+                "AI analysis error: " + xhr.responseText.substring(0, 100);
+            }
+        }
+
+        alert(errorMessage + " Check browser console for details.");
+        button.prop("disabled", false);
+        button.text(originalText);
+      },
+    });
+  }
+
+  /**
+   * Update the AI verdict column with new analysis data
+   *
+   * @param {jQuery} button - The analyze button
+   * @param {Object} analysisData - The AI analysis result
+   */
+  function updateAIVerdictColumn(button, analysisData) {
+    const verdictContainer = button.closest("tr").find(".ai-verdict-container");
+    const explanation = analysisData.explanation || "";
+    const isMalware = analysisData.is_malware || false;
+    const suggestedFix = analysisData.suggested_fix || "";
+
+    const verdictHtml = `
+      <div class="ai-verdict" style="max-width: 300px;">
+        <div style="margin-bottom: 5px;">
+          <span style="font-weight: 600; color: ${
+            isMalware ? "#d63638" : "#46b450"
+          };">
+            ${isMalware ? "⚠️ Malicious" : "✅ Appears Safe"}
+          </span>
+        </div>
+        <div style="font-size: 12px; color: #000000; opacity: 0.8; line-height: 1.4;">
+          ${
+            explanation.length > 100
+              ? explanation.substring(0, 100) + "..."
+              : explanation
+          }
+          ${
+            explanation.length > 100
+              ? '<a href="#" class="show-full-analysis" data-full-text="' +
+                explanation +
+                '" style="color: #FF7342;">Show More</a>'
+              : ""
+          }
+        </div>
+        ${
+          suggestedFix
+            ? '<div style="margin-top: 5px;"><small style="color: #FF7342; font-weight: 600;">Suggested: ' +
+              suggestedFix.charAt(0).toUpperCase() +
+              suggestedFix.slice(1) +
+              "</small></div>"
+            : ""
+        }
+      </div>
+    `;
+
+    verdictContainer.html(verdictHtml);
   }
 })(jQuery);
