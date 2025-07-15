@@ -117,4 +117,8 @@ elif command -v shasum &> /dev/null; then
     shasum -a 256 "$FINAL_ZIP" > "$FINAL_ZIP.sha256"
 fi
 
+# Clean up temporary files
+echo "🧹 Cleaning up temporary files..."
+rm -rf "$TEMP_DIR"
+
 echo "🎉 Build process completed for v${VERSION}!"
