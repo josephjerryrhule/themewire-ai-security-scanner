@@ -17,13 +17,21 @@ mkdir -p "$TEMP_DIR/$PLUGIN_NAME"
 
 echo "📁 Copying necessary files..."
 
-# Copy core plugin files
-cp -r admin/ "$TEMP_DIR/$PLUGIN_NAME/"
-cp -r includes/ "$TEMP_DIR/$PLUGIN_NAME/"
+# Copy core plugin files to the plugin directory
 cp themewire-ai-security-scanner.php "$TEMP_DIR/$PLUGIN_NAME/"
-cp wp-config.php "$TEMP_DIR/$PLUGIN_NAME/"
-cp README.md "$TEMP_DIR/$PLUGIN_NAME/"
-cp LICENSE "$TEMP_DIR/$PLUGIN_NAME/" 2>/dev/null || echo "No LICENSE file found"
+cp wp-config.php "$TEMP_DIR/$PLUGIN_NAME/" 2>/dev/null || echo "No wp-config.php found (optional)"
+cp README.md "$TEMP_DIR/$PLUGIN_NAME/" 2>/dev/null || echo "No README.md found (optional)"
+cp LICENSE "$TEMP_DIR/$PLUGIN_NAME/" 2>/dev/null || echo "No LICENSE file found (optional)"
+
+# Copy admin directory (preserve structure)
+if [ -d "admin" ]; then
+    cp -r admin "$TEMP_DIR/$PLUGIN_NAME/"
+fi
+
+# Copy includes directory (preserve structure - this is critical for WordPress)
+if [ -d "includes" ]; then
+    cp -r includes "$TEMP_DIR/$PLUGIN_NAME/"
+fi
 
 # Copy optimized assets
 echo "🎨 Optimizing assets..."
@@ -62,11 +70,10 @@ rm -rf "$TEMP_DIR/$PLUGIN_NAME/tests/"
 rm -rf "$TEMP_DIR/$PLUGIN_NAME/scripts/"
 rm -rf "$TEMP_DIR/$PLUGIN_NAME/.github/"
 
-# Optimize PHP files (remove extra whitespace, comments for production)
+# Optimize PHP files (light optimization - preserve functionality)
 echo "⚡ Optimizing PHP files..."
-find "$TEMP_DIR/$PLUGIN_NAME" -name "*.php" -exec sed -i '/^[[:space:]]*\/\*/,/\*\//d' {} \; 2>/dev/null
-find "$TEMP_DIR/$PLUGIN_NAME" -name "*.php" -exec sed -i '/^[[:space:]]*\/\//d' {} \; 2>/dev/null
-find "$TEMP_DIR/$PLUGIN_NAME" -name "*.php" -exec sed -i '/^[[:space:]]*$/d' {} \; 2>/dev/null
+# Note: Aggressive comment/whitespace removal disabled to preserve functionality
+# Only remove obvious development comments but keep plugin headers and essential comments
 
 # Create version info file
 echo "📋 Creating version info..."
