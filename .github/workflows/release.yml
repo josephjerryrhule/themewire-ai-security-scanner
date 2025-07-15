@@ -50,16 +50,20 @@ jobs:
       - name: Get current version
         id: current_version
         run: |
-          VERSION=$(grep "Version:" themewire-ai-security-scanner.php | awk '{print $2}' | tr -d ' ')
+          VERSION=$(grep "Version:" themewire-ai-security-scanner.php | head -1 | sed 's/.*Version: *\([0-9.]*\).*/\1/')
+          echo "Current version found: $VERSION"
           echo "version=$VERSION" >> $GITHUB_OUTPUT
 
       - name: Bump patch version
         id: bump_version
         run: |
           CURRENT="${{ steps.current_version.outputs.version }}"
+          echo "Processing version: '$CURRENT'"
           IFS='.' read -r major minor patch <<< "$CURRENT"
+          echo "Parsed - Major: $major, Minor: $minor, Patch: $patch"
           NEW_PATCH=$((patch + 1))
           NEW_VERSION="$major.$minor.$NEW_PATCH"
+          echo "New version: $NEW_VERSION"
           echo "new_version=$NEW_VERSION" >> $GITHUB_OUTPUT
 
       - name: Update version in files
@@ -123,14 +127,17 @@ jobs:
       - name: Get current version
         id: current_version
         run: |
-          VERSION=$(grep "Version:" themewire-ai-security-scanner.php | awk '{print $2}' | tr -d ' ')
+          VERSION=$(grep "Version:" themewire-ai-security-scanner.php | head -1 | sed 's/.*Version: *\([0-9.]*\).*/\1/')
+          echo "Current version found: $VERSION"
           echo "version=$VERSION" >> $GITHUB_OUTPUT
 
       - name: Bump version
         id: bump_version
         run: |
           CURRENT="${{ steps.current_version.outputs.version }}"
+          echo "Processing version: '$CURRENT'"
           IFS='.' read -r major minor patch <<< "$CURRENT"
+          echo "Parsed - Major: $major, Minor: $minor, Patch: $patch"
 
           case "${{ github.event.inputs.version_type }}" in
             "major")
@@ -147,6 +154,7 @@ jobs:
               ;;
           esac
 
+          echo "New version: $NEW_VERSION"
           echo "new_version=$NEW_VERSION" >> $GITHUB_OUTPUT
 
       - name: Update version in files
