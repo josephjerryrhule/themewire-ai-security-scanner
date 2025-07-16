@@ -521,6 +521,11 @@ class Themewire_Security_Scanner
                     for ($k = $j; $k < $batch_end; $k++) {
                         $file = $plugin_files[$k];
 
+                        // Skip non-existent or unreadable files
+                        if (!file_exists($file) || !is_readable($file)) {
+                            continue;
+                        }
+
                         // Skip non-PHP files for now (can expand to JS later)
                         if (pathinfo($file, PATHINFO_EXTENSION) !== 'php') {
                             continue;
@@ -667,6 +672,11 @@ class Themewire_Security_Scanner
                     for ($k = $j; $k < $batch_end; $k++) {
                         $file = $theme_files[$k];
 
+                        // Skip non-existent or unreadable files
+                        if (!file_exists($file) || !is_readable($file)) {
+                            continue;
+                        }
+
                         // Focus on PHP files first
                         if (pathinfo($file, PATHINFO_EXTENSION) === 'php') {
                             // Scan file for common malware patterns
@@ -801,6 +811,11 @@ class Themewire_Security_Scanner
 
                 for ($j = $i; $j < $batch_end; $j++) {
                     $file = $php_files[$j];
+
+                    // Skip non-existent or unreadable files
+                    if (!file_exists($file) || !is_readable($file)) {
+                        continue;
+                    }
 
                     $this->database->add_issue(
                         $scan_id,
@@ -1152,6 +1167,11 @@ class Themewire_Security_Scanner
             for ($j = $i; $j < $batch_end; $j++) {
                 $file = $all_files[$j];
 
+                // Skip non-existent or unreadable files
+                if (!file_exists($file) || !is_readable($file)) {
+                    continue;
+                }
+
                 // Convert to relative path for comparison with known_files
                 $relative_path = str_replace($base_dir . '/', '', $file);
 
@@ -1185,15 +1205,20 @@ class Themewire_Security_Scanner
     }
 
     /**
-     * Find all PHP files in a directory and its subdirectories
+     * Find all PHP files in a directory and its subdirectories (existing files only)
      *
      * @since    1.0.0
      * @param    string    $dir    Directory path
-     * @return   array     Array of PHP file paths
+     * @return   array     Array of PHP file paths (verified to exist)
      */
     private function find_php_files($dir)
     {
         $result = array();
+
+        // Validate directory exists and is readable
+        if (!is_dir($dir) || !is_readable($dir)) {
+            return $result;
+        }
 
         try {
             $it = new RecursiveIteratorIterator(
@@ -1201,12 +1226,25 @@ class Themewire_Security_Scanner
             );
 
             foreach ($it as $file) {
-                if ($file->isFile() && $file->getExtension() === 'php') {
-                    $result[] = $file->getPathname();
+                // Only process actual files with PHP extension that exist and are readable
+                if (
+                    $file->isFile() &&
+                    $file->getExtension() === 'php' &&
+                    file_exists($file->getPathname()) &&
+                    is_readable($file->getPathname())
+                ) {
+
+                    $filepath = $file->getPathname();
+
+                    // Additional verification - ensure it's not a broken symlink or ghost file
+                    if (is_file($filepath) && filesize($filepath) !== false) {
+                        $result[] = $filepath;
+                    }
                 }
             }
         } catch (Exception $e) {
-            // If there's an error accessing the directory, just return what we have so far
+            // Log error but continue - don't let directory access issues break the scan
+            error_log('TWSS: Error scanning directory ' . $dir . ': ' . $e->getMessage());
         }
 
         return $result;
@@ -1233,7 +1271,22 @@ class Themewire_Security_Scanner
      */
     private function scan_file_for_malware($file)
     {
+        // Validate file exists and is readable before scanning
+        if (!file_exists($file) || !is_readable($file)) {
+            return array(
+                'suspicious' => false,
+                'reason' => 'File not found or not readable'
+            );
+        }
+
         $content = file_get_contents($file);
+        if ($content === false) {
+            return array(
+                'suspicious' => false,
+                'reason' => 'Failed to read file content'
+            );
+        }
+
         $result = array(
             'suspicious' => false,
             'reason' => ''
@@ -1310,7 +1363,22 @@ class Themewire_Security_Scanner
      */
     private function scan_file_for_obfuscated_js($file)
     {
+        // Validate file exists and is readable before scanning
+        if (!file_exists($file) || !is_readable($file)) {
+            return array(
+                'suspicious' => false,
+                'reason' => 'File not found or not readable'
+            );
+        }
+
         $content = file_get_contents($file);
+        if ($content === false) {
+            return array(
+                'suspicious' => false,
+                'reason' => 'Failed to read file content'
+            );
+        }
+
         $result = array(
             'suspicious' => false,
             'reason' => ''
@@ -1386,5 +1454,58 @@ class Themewire_Security_Scanner
     {
         $this->database->update_scan_progress($scan_id, $stage, $progress, $message);
         $this->update_scan_activity();
+    }
+
+    /**
+     * Stop the current scan
+     *
+     * @since    1.0.2
+     * @return   array     Result array with success status and message
+     */
+    public function stop_scan()
+    {
+        try {
+            // Clear the scan in progress flag
+            $this->set_scan_in_progress(false);
+
+            // Clear all scan checkpoints
+            $this->clear_scan_checkpoints();
+
+            // Update the scan status to stopped
+            $current_scan_id = get_transient('twss_current_scan_id');
+            if ($current_scan_id) {
+                $this->database->update_scan_status($current_scan_id, 'stopped', 'Scan stopped by user');
+                delete_transient('twss_current_scan_id');
+            }
+
+            return array(
+                'success' => true,
+                'message' => __('Scan stopped successfully', 'themewire-security')
+            );
+        } catch (Exception $e) {
+            return array(
+                'success' => false,
+                'message' => __('Error stopping scan: ', 'themewire-security') . $e->getMessage()
+            );
+        }
+    }
+
+    /**
+     * Clear all scan checkpoint transients
+     *
+     * @since    1.0.2
+     */
+    private function clear_scan_checkpoints()
+    {
+        $current_scan_id = get_transient('twss_current_scan_id');
+        if ($current_scan_id) {
+            // Clear various checkpoint transients
+            delete_transient('twss_core_scan_checkpoint_' . $current_scan_id);
+            delete_transient('twss_plugins_scan_checkpoint_' . $current_scan_id);
+            delete_transient('twss_themes_scan_checkpoint_' . $current_scan_id);
+            delete_transient('twss_uploads_scan_checkpoint_' . $current_scan_id);
+            delete_transient('twss_ai_analysis_checkpoint_' . $current_scan_id);
+            delete_transient('twss_extra_files_scan_checkpoint_' . $current_scan_id);
+        }
     }
 }

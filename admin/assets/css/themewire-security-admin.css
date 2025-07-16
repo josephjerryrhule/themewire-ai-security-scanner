@@ -256,6 +256,7 @@
 .themewire-security-wrap .button {
   border-color: #ff7342 !important;
   color: #ff7342 !important;
+  background-color: #ffffff !important;
   border-radius: 6px !important;
   font-weight: 500 !important;
 }
@@ -264,6 +265,27 @@
   background-color: #fbf6f0 !important;
   border-color: #ff7342 !important;
   color: #ff7342 !important;
+}
+
+/* Override for orange action buttons - these should have orange background with white text */
+.themewire-security-wrap .button-orange,
+.themewire-security-wrap .button[style*="background: #ff7342"],
+.themewire-security-wrap .button[style*="background:#ff7342"],
+.themewire-security-wrap .button[style*="background-color: #ff7342"],
+.themewire-security-wrap .button[style*="background-color:#ff7342"] {
+  background: #ff7342 !important;
+  color: #ffffff !important;
+  border-color: #ff7342 !important;
+}
+
+.themewire-security-wrap .button-orange:hover,
+.themewire-security-wrap .button[style*="background: #ff7342"]:hover,
+.themewire-security-wrap .button[style*="background:#ff7342"]:hover,
+.themewire-security-wrap .button[style*="background-color: #ff7342"]:hover,
+.themewire-security-wrap .button[style*="background-color:#ff7342"]:hover {
+  background: #e6653a !important;
+  color: #ffffff !important;
+  border-color: #e6653a !important;
 }
 
 /* Form Input Styles */

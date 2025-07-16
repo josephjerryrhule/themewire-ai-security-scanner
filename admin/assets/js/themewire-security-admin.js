@@ -32,6 +32,9 @@
   };
   var pollInterval = null;
 
+  // Make pollInterval globally accessible for stop scan functionality
+  window.twssPollInterval = pollInterval;
+
   // Document ready
   $(function () {
     console.log("Themewire Security Admin JS loaded");
@@ -58,6 +61,31 @@
     $("#resume-scan-button").on("click", function () {
       console.log("Resume scan button clicked");
       resumeScan();
+    });
+
+    // Handle Stop Scan button click (uses global function from additional.js)
+    $("#stop-scan-button").on("click", function () {
+      console.log("Stop scan button clicked");
+      if (typeof window.stopScan === 'function') {
+        window.stopScan();
+      }
+    });
+
+    // Handle Clear All Issues button click (uses global function from additional.js)
+    $("#clear-all-issues-button").on("click", function () {
+      console.log("Clear all issues button clicked");
+      if (typeof window.clearAllIssues === 'function') {
+        window.clearAllIssues();
+      }
+    });
+
+    // Handle Clear Scan Issues button click (uses global function from additional.js)
+    $(document).on("click", ".clear-scan-issues-button", function () {
+      var scanId = $(this).data("scan-id");
+      console.log("Clear scan issues button clicked for scan:", scanId);
+      if (typeof window.clearScanIssues === 'function') {
+        window.clearScanIssues(scanId);
+      }
     });
 
     // AI Connection Testing
@@ -499,6 +527,126 @@
   }
 
   /**
+   * Stop the current scan
+   */
+  function stopScan() {
+    const button = $("#stop-scan-button");
+    const startButton = $("#start-scan-button");
+    const resumeButton = $("#resume-scan-button");
+    const statusArea = $("#scan-status-area");
+
+    button.prop("disabled", true);
+    button.text("Stopping...");
+
+    // AJAX request to stop scan
+    $.ajax({
+      url: twss_data.ajax_url,
+      type: "POST",
+      data: {
+        action: "twss_stop_scan",
+        nonce: twss_data.nonce,
+      },
+      success: function (response) {
+        button.prop("disabled", false);
+        button.text(twss_data.i18n.stop_scan || "Stop Scan");
+
+        if (response.success) {
+          statusArea.html(
+            '<div class="notice notice-success"><p>Scan stopped successfully.</p></div>'
+          );
+
+          // Update UI to reflect scan stopped state
+          $("#scan-progress-container").hide();
+          resumeButton.prop("disabled", false);
+          resumeButton.text(twss_data.i18n.resume_scan || "Resume Scan");
+        } else {
+          statusArea.html(
+            '<div class="notice notice-error"><p>Error: ' +
+              (response.data.message || "Unknown error") +
+              "</p></div>"
+          );
+        }
+      },
+      error: function () {
+        button.prop("disabled", false);
+        button.text(twss_data.i18n.stop_scan || "Stop Scan");
+        alert("Error stopping scan. Please try again.");
+      },
+    });
+  }
+
+  /**
+   * Clear all issues from the issues table
+   */
+  function clearAllIssues() {
+    if (confirm("Are you sure you want to clear all issues?")) {
+      const button = $("#clear-all-issues-button");
+      button.prop("disabled", true).text("Clearing...");
+
+      $.ajax({
+        url: twss_data.ajax_url,
+        type: "POST",
+        data: {
+          action: "twss_clear_all_issues",
+          nonce: twss_data.nonce,
+        },
+        success: function (response) {
+          button.prop("disabled", false).text("Clear All Issues");
+
+          if (response.success) {
+            // Show success message
+            alert("All issues cleared successfully.");
+            location.reload(); // Reload page to update issues table
+          } else {
+            alert("Error: " + response.data.message);
+          }
+        },
+        error: function () {
+          button.prop("disabled", false).text("Clear All Issues");
+          alert("Error clearing issues. Please try again.");
+        },
+      });
+    }
+  }
+
+  /**
+   * Clear issues for a specific scan
+   *
+   * @param {number} scanId - The scan ID
+   */
+  function clearScanIssues(scanId) {
+    if (confirm("Are you sure you want to clear issues for this scan?")) {
+      const button = $(".clear-scan-issues-button[data-scan-id='" + scanId + "']");
+      button.prop("disabled", true).text("Clearing...");
+
+      $.ajax({
+        url: twss_data.ajax_url,
+        type: "POST",
+        data: {
+          action: "twss_clear_scan_issues",
+          nonce: twss_data.nonce,
+          scan_id: scanId,
+        },
+        success: function (response) {
+          button.prop("disabled", false).text("Clear Scan Issues");
+
+          if (response.success) {
+            // Show success message
+            alert("Scan issues cleared successfully.");
+            location.reload(); // Reload page to update issues table
+          } else {
+            alert("Error: " + response.data.message);
+          }
+        },
+        error: function () {
+          button.prop("disabled", false).text("Clear Scan Issues");
+          alert("Error clearing scan issues. Please try again.");
+        },
+      });
+    }
+  }
+
+  /**
    * Setup AI connection testing functionality
    */
   function setupAIConnectionTesting() {
@@ -635,22 +783,42 @@
     });
 
     function initiateOAuthFlow(provider) {
-      // Open OAuth popup
-      var popup = window.open(
-        twss_data.admin_url +
-          "admin.php?page=themewire-security-oauth&provider=" +
-          provider,
-        "oauth_popup",
-        "width=600,height=600,scrollbars=yes,resizable=yes"
-      );
+      // Get OAuth URL from server
+      $.ajax({
+        url: twss_data.ajax_url,
+        type: "POST",
+        data: {
+          action: "twss_get_oauth_url",
+          provider: provider,
+          nonce: twss_data.nonce,
+        },
+        success: function (response) {
+          if (response.success && response.data.url) {
+            // Open OAuth popup with the proper URL
+            var popup = window.open(
+              response.data.url,
+              "oauth_popup",
+              "width=600,height=600,scrollbars=yes,resizable=yes"
+            );
 
-      // Listen for OAuth completion
-      var checkClosed = setInterval(function () {
-        if (popup.closed) {
-          clearInterval(checkClosed);
-          location.reload(); // Refresh to show connected status
-        }
-      }, 1000);
+            // Listen for OAuth completion
+            var checkClosed = setInterval(function () {
+              if (popup.closed) {
+                clearInterval(checkClosed);
+                location.reload(); // Refresh to show connected status
+              }
+            }, 1000);
+          } else {
+            alert(
+              "Error: " +
+                (response.data ? response.data.message : "OAuth not configured")
+            );
+          }
+        },
+        error: function () {
+          alert("Error connecting to OAuth service. Please try again.");
+        },
+      });
     }
 
     function disconnectOAuth(provider) {
@@ -1162,569 +1330,1197 @@
   }
 
   /**
-   * Test API key
-   *
-   * @param {string} provider - The AI provider (openai or gemini)
+   * Stop the current scan
    */
-  function testApiKey(provider) {
-    const button = $("#test-" + provider + "-api");
-    const statusSpan = $("#" + provider + "-api-status");
-    const apiKey = $("#twss_" + provider + "_api_key").val();
+  function stopScan() {
+    const button = $("#stop-scan-button");
+    const startButton = $("#start-scan-button");
+    const resumeButton = $("#resume-scan-button");
+    const statusArea = $("#scan-status-area");
 
-    if (!apiKey) {
-      statusSpan.html(
-        '<span style="color:red;">Please enter an API key first</span>'
-      );
-      return;
-    }
-
-    // Show loading
     button.prop("disabled", true);
-    button.text(twss_data.i18n.testing || "Testing...");
-    statusSpan.html(
-      '<span class="loading-spinner" style="display:inline-block;"></span>'
-    );
+    button.text("Stopping...");
 
-    // AJAX request to test API key
+    // AJAX request to stop scan
     $.ajax({
       url: twss_data.ajax_url,
       type: "POST",
       data: {
-        action: "twss_test_" + provider + "_api",
+        action: "twss_stop_scan",
         nonce: twss_data.nonce,
-        api_key: apiKey,
       },
       success: function (response) {
         button.prop("disabled", false);
-        button.text(twss_data.i18n.test_connection || "Test Connection");
+        button.text(twss_data.i18n.stop_scan || "Stop Scan");
 
         if (response.success) {
-          statusSpan.html(
-            '<span style="color:green;">' + response.data.message + "</span>"
+          statusArea.html(
+            '<div class="notice notice-success"><p>Scan stopped successfully.</p></div>'
           );
+
+          // Update UI to reflect scan stopped state
+          $("#scan-progress-container").hide();
+          resumeButton.prop("disabled", false);
+          resumeButton.text(twss_data.i18n.resume_scan || "Resume Scan");
         } else {
-          statusSpan.html(
-            '<span style="color:red;">Error: ' +
+          statusArea.html(
+            '<div class="notice notice-error"><p>Error: ' +
               (response.data.message || "Unknown error") +
-              "</span>"
+              "</p></div>"
           );
         }
       },
       error: function () {
         button.prop("disabled", false);
-        button.text(twss_data.i18n.test_connection || "Test Connection");
-        statusSpan.html(
-          '<span style="color:red;">Server error. Please try again.</span>'
-        );
+        button.text(twss_data.i18n.stop_scan || "Stop Scan");
+        alert("Error stopping scan. Please try again.");
       },
     });
   }
 
   /**
-   * Poll for scan status updates
+   * Clear all issues from the issues table
    */
-  function pollScanStatus(scanId, interval = 3000) {
-    // Clear any existing poll
-    if (pollInterval) {
-      clearInterval(pollInterval);
-    }
-
-    const statusArea = $("#scan-status-area");
-    const resultsArea = $("#scan-results-area");
-
-    // Use interval for polling to prevent getting stuck if a single request fails
-    pollInterval = setInterval(function () {
-      // If scan ID is null (after timeout), try to get the current scan ID
-      var scanIdToUse = scanId;
-      if (!scanIdToUse && twss_data.has_interrupted_scan) {
-        // This will use the current scan ID stored in options
-        scanIdToUse = "current";
-      }
-
-      if (!scanIdToUse) {
-        clearInterval(pollInterval);
-        return;
-      }
+  function clearAllIssues() {
+    if (confirm("Are you sure you want to clear all issues?")) {
+      const button = $("#clear-all-issues-button");
+      button.prop("disabled", true).text("Clearing...");
 
       $.ajax({
         url: twss_data.ajax_url,
         type: "POST",
         data: {
-          action: "twss_get_scan_status",
+          action: "twss_clear_all_issues",
           nonce: twss_data.nonce,
-          scan_id: scanIdToUse,
+        },
+        success: function (response) {
+          button.prop("disabled", false).text("Clear All Issues");
+
+          if (response.success) {
+            // Show success message
+            alert("All issues cleared successfully.");
+            location.reload(); // Reload page to update issues table
+          } else {
+            alert("Error: " + response.data.message);
+          }
+        },
+        error: function () {
+          button.prop("disabled", false).text("Clear All Issues");
+          alert("Error clearing issues. Please try again.");
+        },
+      });
+    }
+  }
+
+  /**
+   * Clear issues for a specific scan
+   *
+   * @param {number} scanId - The scan ID
+   */
+  function clearScanIssues(scanId) {
+    if (confirm("Are you sure you want to clear issues for this scan?")) {
+      const button = $(".clear-scan-issues-button[data-scan-id='" + scanId + "']");
+      button.prop("disabled", true).text("Clearing...");
+
+      $.ajax({
+        url: twss_data.ajax_url,
+        type: "POST",
+        data: {
+          action: "twss_clear_scan_issues",
+          nonce: twss_data.nonce,
+          scan_id: scanId,
+        },
+        success: function (response) {
+          button.prop("disabled", false).text("Clear Scan Issues");
+
+          if (response.success) {
+            // Show success message
+            alert("Scan issues cleared successfully.");
+            location.reload(); // Reload page to update issues table
+          } else {
+            alert("Error: " + response.data.message);
+          }
+        },
+        error: function () {
+          button.prop("disabled", false).text("Clear Scan Issues");
+          alert("Error clearing scan issues. Please try again.");
+        },
+      });
+    }
+  }
+
+  /**
+   * Setup AI connection testing functionality
+   */
+  function setupAIConnectionTesting() {
+    // Test OpenAI API Key
+    $(document).on("click", "#test-openai-api", function (e) {
+      e.preventDefault();
+      var button = $(this);
+      var apiKey = $("#twss_openai_api_key").val();
+      var statusSpan = $("#openai-api-status");
+
+      if (!apiKey) {
+        statusSpan.html(
+          '<span style="color: #d63638;">Please enter an API key first</span>'
+        );
+        return;
+      }
+
+      button.prop("disabled", true).text("Testing...");
+      statusSpan.html(
+        '<span style="color: #FF7342;">Testing connection...</span>'
+      );
+
+      $.ajax({
+        url: twss_data.ajax_url,
+        type: "POST",
+        data: {
+          action: "twss_test_openai_api",
+          api_key: apiKey,
+          nonce: twss_data.nonce,
         },
         success: function (response) {
           if (response.success) {
-            const data = response.data;
-
-            // Update progress information
-            if (data.progress && data.progress.length > 0) {
-              // Update latest stage progress
-              for (var i = 0; i < data.progress.length; i++) {
-                var progressItem = data.progress[i];
-                stageProgress[progressItem.stage] = progressItem.progress / 100;
-                currentStage = progressItem.stage;
-
-                // Find most recent message for current stage
-                var latestMessage = progressItem.message;
-              }
-
-              // Calculate and update overall progress
-              overallProgress = calculateOverallProgress();
-              updateProgressBar(overallProgress, currentStage, latestMessage);
-            }
-
-            // Show status message
-            let statusHtml =
-              '<div class="notice notice-info"><p>Scan status: <strong>' +
-              data.status +
-              "</strong></p></div>";
-            statusArea.html(statusHtml);
-
-            // If scan is completed
-            if (data.status === "completed") {
-              clearInterval(pollInterval);
-
-              const button = $("#start-scan-button");
-              button.prop("disabled", false);
-              button.text(twss_data.i18n.start_scan || "Start Scan");
-
-              const resumeButton = $("#resume-scan-button");
-              if (resumeButton.length) {
-                resumeButton.remove(); // Remove resume button as scan is now complete
-              }
-
-              // Update progress bar to 100%
-              updateProgressBar(100, "ai_analysis", "Scan completed");
-
-              resultsArea.html(
-                '<div class="card">' +
-                  '<h2 class="card-title">Scan Results</h2>' +
-                  "<p>Scan completed successfully.</p>" +
-                  "<p>Total issues found: <strong>" +
-                  data.total_issues +
-                  "</strong></p>" +
-                  '<p><a href="' +
-                  twss_data.admin_url +
-                  'admin.php?page=themewire-security-issues" class="button button-primary">View Issues</a></p>' +
-                  "</div>"
-              );
-
-              // Reload page after 2 seconds to refresh stats
-              setTimeout(function () {
-                window.location.reload();
-              }, 2000);
-            } else if (data.status === "failed") {
-              clearInterval(pollInterval);
-
-              const button = $("#start-scan-button");
-              button.prop("disabled", false);
-              button.text(twss_data.i18n.start_scan || "Start Scan");
-
-              const resumeButton = $("#resume-scan-button");
-              if (resumeButton.length) {
-                resumeButton.prop("disabled", false);
-                resumeButton.text(twss_data.i18n.resume_scan || "Resume Scan");
-              }
-
-              $("#scan-progress-container").hide();
-              statusArea.html(
-                '<div class="notice notice-error"><p>Scan failed: ' +
-                  (data.error_message || "Unknown error") +
-                  "</p></div>"
-              );
-            }
+            statusSpan.html(
+              '<span style="color: #46b450;">✓ ' +
+                response.data.message +
+                "</span>"
+            );
           } else {
-            // Only show error if we repeatedly fail
-            console.log(
-              "Error polling scan status: " +
-                (response.data ? response.data.message : "Unknown error")
+            statusSpan.html(
+              '<span style="color: #d63638;">✗ ' +
+                response.data.message +
+                "</span>"
             );
           }
         },
-        error: function (xhr) {
-          // Log error but keep polling
-          console.log(
-            "Error polling scan status (HTTP " +
-              xhr.status +
-              "): " +
-              xhr.statusText
+        error: function () {
+          statusSpan.html(
+            '<span style="color: #d63638;">✗ Connection failed</span>'
           );
         },
+        complete: function () {
+          button.prop("disabled", false).text("Test API Key");
+        },
       });
-    }, interval);
+    });
+
+    // Test Gemini API Key
+    $(document).on("click", "#test-gemini-api", function (e) {
+      e.preventDefault();
+      var button = $(this);
+      var apiKey = $("#twss_gemini_api_key").val();
+      var statusSpan = $("#gemini-api-status");
+
+      if (!apiKey) {
+        statusSpan.html(
+          '<span style="color: #d63638;">Please enter an API key first</span>'
+        );
+        return;
+      }
+
+      button.prop("disabled", true).text("Testing...");
+      statusSpan.html(
+        '<span style="color: #FF7342;">Testing connection...</span>'
+      );
+
+      $.ajax({
+        url: twss_data.ajax_url,
+        type: "POST",
+        data: {
+          action: "twss_test_gemini_api",
+          api_key: apiKey,
+          nonce: twss_data.nonce,
+        },
+        success: function (response) {
+          if (response.success) {
+            statusSpan.html(
+              '<span style="color: #46b450;">✓ ' +
+                response.data.message +
+                "</span>"
+            );
+          } else {
+            statusSpan.html(
+              '<span style="color: #d63638;">✗ ' +
+                response.data.message +
+                "</span>"
+            );
+          }
+        },
+        error: function () {
+          statusSpan.html(
+            '<span style="color: #d63638;">✗ Connection failed</span>'
+          );
+        },
+        complete: function () {
+          button.prop("disabled", false).text("Test API Key");
+        },
+      });
+    });
   }
 
   /**
-   * Perform an action on an issue
-   *
-   * @param {jQuery} button - The button that was clicked
-   * @param {string} action - The AJAX action to perform
-   * @param {number} issueId - The issue ID
-   * @param {string} loadingText - Text to show while loading
-   * @param {string} originalText - Original button text
-   * @param {object} extraData - Additional data to send
+   * Setup OAuth flow handlers
    */
-  function performIssueAction(
-    button,
-    action,
-    issueId,
-    loadingText,
-    originalText,
-    extraData = {}
-  ) {
-    console.log("performIssueAction called");
-    console.log("Action:", action);
-    console.log("Issue ID:", issueId);
-    console.log("TWSS Data available:", !!twss_data);
-    console.log("AJAX URL:", twss_data ? twss_data.ajax_url : "undefined");
-    console.log("Nonce:", twss_data ? twss_data.nonce : "undefined");
+  function setupOAuthHandlers() {
+    // OAuth connection handlers
+    $(document).on("click", "#connect-openai-oauth", function (e) {
+      e.preventDefault();
+      initiateOAuthFlow("openai");
+    });
 
-    // Validate inputs
-    if (!twss_data || !twss_data.ajax_url || !twss_data.nonce) {
-      console.error("TWSS data not available:", twss_data);
-      alert("Error: Plugin data not loaded properly. Please refresh the page.");
-      return;
+    $(document).on("click", "#disconnect-openai-oauth", function (e) {
+      e.preventDefault();
+      disconnectOAuth("openai");
+    });
+
+    $(document).on("click", "#connect-gemini-oauth", function (e) {
+      e.preventDefault();
+      initiateOAuthFlow("gemini");
+    });
+
+    $(document).on("click", "#disconnect-gemini-oauth", function (e) {
+      e.preventDefault();
+      disconnectOAuth("gemini");
+    });
+
+    function initiateOAuthFlow(provider) {
+      // Get OAuth URL from server
+      $.ajax({
+        url: twss_data.ajax_url,
+        type: "POST",
+        data: {
+          action: "twss_get_oauth_url",
+          provider: provider,
+          nonce: twss_data.nonce,
+        },
+        success: function (response) {
+          if (response.success && response.data.url) {
+            // Open OAuth popup with the proper URL
+            var popup = window.open(
+              response.data.url,
+              "oauth_popup",
+              "width=600,height=600,scrollbars=yes,resizable=yes"
+            );
+
+            // Listen for OAuth completion
+            var checkClosed = setInterval(function () {
+              if (popup.closed) {
+                clearInterval(checkClosed);
+                location.reload(); // Refresh to show connected status
+              }
+            }, 1000);
+          } else {
+            alert(
+              "Error: " +
+                (response.data ? response.data.message : "OAuth not configured")
+            );
+          }
+        },
+        error: function () {
+          alert("Error connecting to OAuth service. Please try again.");
+        },
+      });
     }
 
-    if (!issueId) {
-      console.error("No issue ID provided");
-      alert("Error: No issue ID provided.");
-      return;
+    function disconnectOAuth(provider) {
+      if (
+        confirm("Are you sure you want to disconnect from " + provider + "?")
+      ) {
+        $.ajax({
+          url: twss_data.ajax_url,
+          type: "POST",
+          data: {
+            action: "twss_disconnect_oauth",
+            provider: provider,
+            nonce: twss_data.nonce,
+          },
+          success: function (response) {
+            if (response.success) {
+              location.reload();
+            } else {
+              alert("Error disconnecting: " + response.data.message);
+            }
+          },
+        });
+      }
+    }
+  }
+
+  /**
+   * Setup bulk actions for scan results
+   */
+  function setupBulkActions() {
+    // Bulk action handlers
+    $(document).on("click", "#bulk-fix-selected", function (e) {
+      e.preventDefault();
+      performBulkAction("fix");
+    });
+
+    $(document).on("click", "#bulk-quarantine-selected", function (e) {
+      e.preventDefault();
+      performBulkAction("quarantine");
+    });
+
+    $(document).on("click", "#bulk-delete-selected", function (e) {
+      e.preventDefault();
+      performBulkAction("delete");
+    });
+
+    $(document).on("click", "#bulk-whitelist-selected", function (e) {
+      e.preventDefault();
+      performBulkAction("whitelist");
+    });
+
+    // Select all checkbox
+    $(document).on("change", "#select-all-files", function () {
+      $(".file-checkbox").prop("checked", $(this).prop("checked"));
+      updateBulkActionButtons();
+    });
+
+    // Individual file checkboxes
+    $(document).on("change", ".file-checkbox", function () {
+      updateBulkActionButtons();
+    });
+
+    function performBulkAction(action) {
+      var selectedFiles = [];
+      $(".file-checkbox:checked").each(function () {
+        selectedFiles.push($(this).val());
+      });
+
+      if (selectedFiles.length === 0) {
+        alert("Please select at least one file.");
+        return;
+      }
+
+      var confirmMessage =
+        "Are you sure you want to " +
+        action +
+        " " +
+        selectedFiles.length +
+        " selected file(s)?";
+      if (action === "delete") {
+        confirmMessage += " This action cannot be undone.";
+      }
+
+      if (!confirm(confirmMessage)) {
+        return;
+      }
+
+      var button = $("#bulk-" + action + "-selected");
+      var originalText = button.text();
+      button.prop("disabled", true).text("Processing...");
+
+      $.ajax({
+        url: twss_data.ajax_url,
+        type: "POST",
+        data: {
+          action: "twss_bulk_file_action",
+          bulk_action: action,
+          files: selectedFiles,
+          nonce: twss_data.nonce,
+        },
+        success: function (response) {
+          if (response.success) {
+            alert(response.data.message);
+            location.reload(); // Refresh to show updated results
+          } else {
+            alert("Error: " + response.data.message);
+          }
+        },
+        error: function () {
+          alert("An error occurred while processing the request.");
+        },
+        complete: function () {
+          button.prop("disabled", false).text(originalText);
+        },
+      });
     }
 
+    function updateBulkActionButtons() {
+      var selectedCount = $(".file-checkbox:checked").length;
+      var buttons = $(
+        "#bulk-fix-selected, #bulk-quarantine-selected, #bulk-delete-selected, #bulk-whitelist-selected"
+      );
+
+      if (selectedCount > 0) {
+        buttons.prop("disabled", false);
+        buttons.each(function () {
+          var action = $(this)
+            .attr("id")
+            .replace("bulk-", "")
+            .replace("-selected", "");
+          $(this).text(
+            action.charAt(0).toUpperCase() +
+              action.slice(1) +
+              " (" +
+              selectedCount +
+              ")"
+          );
+        });
+      } else {
+        buttons.prop("disabled", true);
+        buttons.each(function () {
+          var action = $(this)
+            .attr("id")
+            .replace("bulk-", "")
+            .replace("-selected", "");
+          $(this).text(action.charAt(0).toUpperCase() + action.slice(1));
+        });
+      }
+    }
+  }
+
+  /**
+   * Setup enhanced filtering for the issues page
+   */
+  function setupIssuesFiltering() {
+    // Auto-submit filter form when selections change
+    $(document).on("change", "#status_filter, #severity_filter", function () {
+      var form = $("#issues-filter-form");
+      if (form.length) {
+        // Add loading state
+        $(".filters-section").addClass("loading");
+        form.submit();
+      }
+    });
+
+    // Show filter counts (if we want to add this feature later)
+    updateFilterCounts();
+
+    // Keyboard navigation for pagination
+    $(document).on("keydown", function (e) {
+      if (
+        e.target.tagName.toLowerCase() === "input" ||
+        e.target.tagName.toLowerCase() === "textarea"
+      ) {
+        return; // Don't interfere with form inputs
+      }
+
+      var currentUrl = window.location.href;
+      var currentPage = getCurrentPage();
+
+      // Left arrow or 'p' for previous page
+      if ((e.keyCode === 37 || e.keyCode === 80) && currentPage > 1) {
+        e.preventDefault();
+        var newUrl = updateUrlParameter(currentUrl, "paged", currentPage - 1);
+        window.location.href = newUrl;
+      }
+
+      // Right arrow or 'n' for next page
+      if (e.keyCode === 39 || e.keyCode === 78) {
+        e.preventDefault();
+        var nextPageLink = $('.pagination-links a:contains("Next")');
+        if (nextPageLink.length) {
+          window.location.href = nextPageLink.attr("href");
+        }
+      }
+    });
+
+    // Enhanced bulk selection with filter awareness
+    updateBulkActionCounts();
+  }
+
+  /**
+   * Update filter counts (placeholder for future enhancement)
+   */
+  function updateFilterCounts() {
+    // This could show counts next to each filter option
+    // e.g., "High (15)" instead of just "High"
+    // Implementation would require AJAX call to get counts
+  }
+
+  /**
+   * Get current page number from URL
+   */
+  function getCurrentPage() {
+    var urlParams = new URLSearchParams(window.location.search);
+    return parseInt(urlParams.get("paged")) || 1;
+  }
+
+  /**
+   * Update URL parameter
+   */
+  function updateUrlParameter(url, param, value) {
+    var urlParts = url.split("?");
+    var baseUrl = urlParts[0];
+    var params = new URLSearchParams(urlParts[1] || "");
+    params.set(param, value);
+    return baseUrl + "?" + params.toString();
+  }
+
+  /**
+   * Enhanced bulk action count updates
+   */
+  function updateBulkActionCounts() {
+    var selectedCount = $(".file-checkbox:checked").length;
+    var totalVisible = $(".file-checkbox").length;
+
+    // Update bulk action button text with context
+    if (selectedCount > 0) {
+      var buttons = $(
+        "#bulk-fix-selected, #bulk-quarantine-selected, #bulk-delete-selected, #bulk-whitelist-selected"
+      );
+      buttons.each(function () {
+        var action = $(this)
+          .attr("id")
+          .replace("bulk-", "")
+          .replace("-selected", "");
+        var actionText = action.charAt(0).toUpperCase() + action.slice(1);
+        $(this).text(
+          actionText + " (" + selectedCount + " of " + totalVisible + ")"
+        );
+      });
+    }
+  }
+
+  /**
+   * Update the progress bar
+   *
+   * @param {number} percent - Percentage complete (0-100)
+   * @param {string} stage - Current scan stage
+   * @param {string} message - Status message
+   */
+  function updateProgressBar(percent, stage, message) {
+    $("#scan-progress-container").show();
+    $(".scan-progress-bar-fill").css("width", percent + "%");
+    $(".scan-progress-text").text(percent + "%");
+
+    var stageText = "";
+    switch (stage) {
+      case "core":
+        stageText = "Scanning WordPress core files";
+        break;
+      case "plugins":
+        stageText = "Scanning plugin files";
+        break;
+      case "themes":
+        stageText = "Scanning theme files";
+        break;
+      case "uploads":
+        stageText = "Scanning uploads directory";
+        break;
+      case "ai_analysis":
+        stageText = "Analyzing suspicious files with AI";
+        break;
+      default:
+        stageText = "Scanning in progress";
+    }
+
+    var stageHtml =
+      "<p><strong>" + stageText + "</strong>: " + message + "</p>";
+    stageHtml += '<div class="scan-stage-list">';
+
+    for (var i = 0; i < stages.length; i++) {
+      var status = "pending";
+      var statusText = "Pending";
+
+      // Set stage status
+      if (stages[i] === stage) {
+        status = "in-progress";
+        statusText = "In Progress";
+      } else if (stages.indexOf(stage) > stages.indexOf(stages[i])) {
+        status = "completed";
+        statusText = "Completed";
+      }
+
+      var stageName = "";
+      switch (stages[i]) {
+        case "core":
+          stageName = "WordPress Core";
+          break;
+        case "plugins":
+          stageName = "Plugins";
+          break;
+        case "themes":
+          stageName = "Themes";
+          break;
+        case "uploads":
+          stageName = "Uploads Directory";
+          break;
+        case "ai_analysis":
+          stageName = "AI Analysis";
+          break;
+      }
+
+      stageHtml += '<div class="scan-stage-item">';
+      stageHtml += '<span class="stage-name">' + stageName + "</span>";
+      stageHtml +=
+        '<span class="stage-status ' + status + '">' + statusText + "</span>";
+      stageHtml += "</div>";
+    }
+
+    stageHtml += "</div>";
+    $("#scan-stage-info").html(stageHtml);
+  }
+
+  /**
+   * Calculate overall progress based on stage progress
+   */
+  function calculateOverallProgress() {
+    var overall = 0;
+    for (var stage in stageProgress) {
+      if (stageProgress.hasOwnProperty(stage)) {
+        overall += stageProgress[stage] * stageWeights[stage];
+      }
+    }
+    return Math.round(overall);
+  }
+
+  /**
+   * Start a new scan
+   */
+  function startScan() {
+    const button = $("#start-scan-button");
+    const resumeButton = $("#resume-scan-button");
+    const statusArea = $("#scan-status-area");
+
+    // Reset progress tracking
+    overallProgress = 0;
+    currentStage = "";
+    for (var stage in stageProgress) {
+      stageProgress[stage] = 0;
+    }
+
+    // Show initial progress bar at 0%
+    updateProgressBar(0, "", "Preparing scan");
+
+    // Disable buttons and show loading
     button.prop("disabled", true);
-    button.text(loadingText);
+    button.text(twss_data.i18n.scanning || "Scanning...");
 
-    const data = {
-      action: action,
-      nonce: twss_data.nonce,
-      issue_id: issueId,
-      ...extraData,
-    };
+    if (resumeButton.length) {
+      resumeButton.prop("disabled", true);
+    }
 
-    console.log("Sending AJAX request with data:", data);
-    console.log("Full AJAX URL:", twss_data.ajax_url);
+    statusArea.html(
+      '<div class="notice notice-info"><p>Starting security scan... <span class="loading-spinner"></span></p></div>'
+    );
 
+    // AJAX request to start scan
     $.ajax({
       url: twss_data.ajax_url,
       type: "POST",
-      data: data,
-      timeout: 30000, // 30 second timeout
-      beforeSend: function (xhr) {
-        console.log("AJAX request starting...");
-        console.log("Request headers:", xhr.getAllResponseHeaders());
+      data: {
+        action: "twss_start_scan",
+        nonce: twss_data.nonce,
       },
-      success: function (response, textStatus, xhr) {
-        console.log("AJAX response received:");
-        console.log("Status:", textStatus);
-        console.log("Response:", response);
-        console.log("Response type:", typeof response);
+      success: function (response) {
+        if (response.success) {
+          statusArea.html(
+            '<div class="notice notice-success"><p>Scan started successfully!</p></div>'
+          );
+          pollScanStatus(response.data.scan_id);
+        } else {
+          button.prop("disabled", false);
+          button.text(twss_data.i18n.start_scan || "Start Scan");
 
-        // Handle both JSON and string responses
-        let parsedResponse = response;
-        if (typeof response === "string") {
-          try {
-            parsedResponse = JSON.parse(response);
-          } catch (e) {
-            console.error("Failed to parse response as JSON:", response);
-            alert("Error: Invalid response from server. Response: " + response);
-            button.prop("disabled", false);
-            button.text(originalText);
-            return;
+          if (resumeButton.length) {
+            resumeButton.prop("disabled", false);
           }
-        }
 
-        console.log("Parsed response:", parsedResponse);
-
-        if (parsedResponse && parsedResponse.success) {
-          // Show success message
-          var successMessage =
-            parsedResponse.data && parsedResponse.data.message
-              ? parsedResponse.data.message
-              : "Action completed successfully";
-
-          console.log("Action successful:", successMessage);
-
-          // Create a temporary success notice
-          var notice = $(
-            '<div class="notice notice-success is-dismissible"><p>' +
-              successMessage +
+          $("#scan-progress-container").hide();
+          statusArea.html(
+            '<div class="notice notice-error"><p>Error: ' +
+              (response.data.message || "Unknown error") +
               "</p></div>"
           );
-          $(".themewire-security-wrap h1").after(notice);
-
-          // Remove the table row with animation
-          button.closest("tr").fadeOut(500, function () {
-            $(this).remove();
-
-            // Check if table is empty
-            const tbody = $(".wp-list-table tbody");
-            if (tbody.children().length === 0) {
-              setTimeout(function () {
-                location.reload(); // Reload to show "no issues" message
-              }, 1000);
-            }
-          });
-        } else {
-          console.error("Action failed:", parsedResponse);
-          var errorMessage =
-            parsedResponse && parsedResponse.data && parsedResponse.data.message
-              ? parsedResponse.data.message
-              : parsedResponse && parsedResponse.message
-              ? parsedResponse.message
-              : "Unknown error occurred";
-
-          alert("Error: " + errorMessage);
-          button.prop("disabled", false);
-          button.text(originalText);
         }
       },
-      error: function (xhr, status, error) {
-        console.error("AJAX error occurred:");
-        console.error("Status:", status);
-        console.error("Error:", error);
-        console.error("Response Text:", xhr.responseText);
-        console.error("Status Code:", xhr.status);
-        console.error("Ready State:", xhr.readyState);
+      error: function (xhr) {
+        // Check for timeout (504)
+        if (xhr.status === 504) {
+          statusArea.html(
+            '<div class="notice notice-error"><p>The scan timed out. This usually happens on larger sites. The scan will continue in the background. Please check back later for results, or try refreshing the page.</p></div>'
+          );
 
-        var errorMessage = "Server error occurred.";
+          // Continue polling despite the timeout
+          pollScanStatus(null);
+        } else {
+          button.prop("disabled", false);
+          button.text(twss_data.i18n.start_scan || "Start Scan");
 
-        // Check for specific HTTP error codes
-        switch (xhr.status) {
-          case 403:
-            errorMessage =
-              "Permission denied. Please refresh the page and try again.";
-            break;
-          case 404:
-            errorMessage =
-              "AJAX endpoint not found. Please check plugin installation.";
-            break;
-          case 500:
-            errorMessage = "Internal server error. Check error logs.";
-            break;
-          case 0:
-            errorMessage = "Network error. Please check your connection.";
-            break;
-          default:
-            if (xhr.responseText) {
-              errorMessage =
-                "Server error: " + xhr.responseText.substring(0, 100);
-            }
+          if (resumeButton.length) {
+            resumeButton.prop("disabled", false);
+          }
+
+          $("#scan-progress-container").hide();
+          statusArea.html(
+            '<div class="notice notice-error"><p>Server error. Please try again.</p></div>'
+          );
         }
-
-        // Check if response contains HTML (indicating an error page)
-        if (xhr.responseText && xhr.responseText.includes("<!DOCTYPE")) {
-          errorMessage =
-            "Server returned an error page. Check WordPress error logs.";
-        }
-
-        alert(errorMessage + " Check browser console for details.");
-        button.prop("disabled", false);
-        button.text(originalText);
       },
     });
   }
 
   /**
-   * Perform AI analysis on a specific issue
-   *
-   * @param {jQuery} button - The button that was clicked
-   * @param {number} issueId - The issue ID to analyze
+   * Resume an interrupted scan
    */
-  function performAIAnalysis(button, issueId) {
-    console.log("performAIAnalysis called");
-    console.log("Issue ID:", issueId);
-    console.log("TWSS Data available:", !!twss_data);
+  function resumeScan() {
+    const button = $("#resume-scan-button");
+    const startButton = $("#start-scan-button");
+    const statusArea = $("#scan-status-area");
 
-    // Validate inputs
-    if (!twss_data || !twss_data.ajax_url || !twss_data.nonce) {
-      console.error("TWSS data not available:", twss_data);
-      alert("Error: Plugin data not loaded properly. Please refresh the page.");
-      return;
+    // Reset progress tracking
+    overallProgress = 0;
+    currentStage = "";
+    for (var stage in stageProgress) {
+      stageProgress[stage] = 0;
     }
 
-    if (!issueId) {
-      console.error("No issue ID provided");
-      alert("Error: No issue ID provided.");
-      return;
-    }
+    // Show initial progress bar
+    updateProgressBar(0, "", "Preparing to resume scan");
 
-    const originalText = button.text();
-    const loadingText = "Analyzing...";
-
+    // Disable buttons and show loading
     button.prop("disabled", true);
-    button.text(loadingText);
+    button.text(twss_data.i18n.scanning || "Resuming...");
+    startButton.prop("disabled", true);
 
-    const data = {
-      action: "twss_analyze_issue",
-      nonce: twss_data.nonce,
-      issue_id: issueId,
-    };
+    statusArea.html(
+      '<div class="notice notice-info"><p>Resuming security scan... <span class="loading-spinner"></span></p></div>'
+    );
 
-    console.log("Sending AI analysis AJAX request with data:", data);
-
+    // AJAX request to resume scan
     $.ajax({
       url: twss_data.ajax_url,
       type: "POST",
-      data: data,
-      timeout: 60000, // 60 second timeout for AI analysis
-      beforeSend: function (xhr) {
-        console.log("AI analysis AJAX request starting...");
+      data: {
+        action: "twss_resume_scan",
+        nonce: twss_data.nonce,
       },
-      success: function (response, textStatus, xhr) {
-        console.log("AI analysis AJAX response received:");
-        console.log("Status:", textStatus);
-        console.log("Response:", response);
+      success: function (response) {
+        if (response.success) {
+          statusArea.html(
+            '<div class="notice notice-success"><p>Scan resumed successfully!</p></div>'
+          );
+          pollScanStatus(response.data.scan_id);
+        } else {
+          button.prop("disabled", false);
+          button.text(twss_data.i18n.resume_scan || "Resume Scan");
+          startButton.prop("disabled", false);
 
-        // Handle both JSON and string responses
-        let parsedResponse = response;
-        if (typeof response === "string") {
-          try {
-            parsedResponse = JSON.parse(response);
-          } catch (e) {
-            console.error("Failed to parse response as JSON:", response);
-            alert("Error: Invalid response from server. Response: " + response);
-            button.prop("disabled", false);
-            button.text(originalText);
-            return;
-          }
-        }
-
-        console.log("Parsed AI analysis response:", parsedResponse);
-
-        if (parsedResponse && parsedResponse.success) {
-          // Show success message
-          var successMessage =
-            parsedResponse.data && parsedResponse.data.message
-              ? parsedResponse.data.message
-              : "AI analysis completed successfully";
-
-          console.log("AI analysis successful:", successMessage);
-
-          // Create a temporary success notice
-          var notice = $(
-            '<div class="notice notice-success is-dismissible"><p>' +
-              successMessage +
+          $("#scan-progress-container").hide();
+          statusArea.html(
+            '<div class="notice notice-error"><p>Error: ' +
+              (response.data.message || "Unknown error") +
               "</p></div>"
           );
-          $(".themewire-security-wrap h1").after(notice);
-
-          // Update the AI verdict column with the new analysis
-          const analysisData = parsedResponse.data.analysis;
-          if (analysisData) {
-            updateAIVerdictColumn(button, analysisData);
-          }
-
-          // Remove the analyze button
-          button.fadeOut(300, function () {
-            $(this).remove();
-          });
-
-          // Auto-dismiss the notice after 5 seconds
-          setTimeout(function () {
-            notice.fadeOut();
-          }, 5000);
-        } else {
-          console.error("AI analysis failed:", parsedResponse);
-          var errorMessage =
-            parsedResponse && parsedResponse.data && parsedResponse.data.message
-              ? parsedResponse.data.message
-              : parsedResponse && parsedResponse.message
-              ? parsedResponse.message
-              : "AI analysis failed";
-
-          alert("Error: " + errorMessage);
-          button.prop("disabled", false);
-          button.text(originalText);
         }
       },
-      error: function (xhr, status, error) {
-        console.error("AI analysis AJAX error occurred:");
-        console.error("Status:", status);
-        console.error("Error:", error);
-        console.error("Response Text:", xhr.responseText);
+      error: function (xhr) {
+        // Check for timeout (504)
+        if (xhr.status === 504) {
+          statusArea.html(
+            '<div class="notice notice-error"><p>The scan timed out. This usually happens on larger sites. The scan will continue in the background. Please check back later for results, or try refreshing the page.</p></div>'
+          );
 
-        var errorMessage = "AI analysis failed due to server error.";
+          // Continue polling despite the timeout
+          pollScanStatus(null);
+        } else {
+          button.prop("disabled", false);
+          button.text(twss_data.i18n.resume_scan || "Resume Scan");
+          startButton.prop("disabled", false);
 
-        // Check for specific HTTP error codes
-        switch (xhr.status) {
-          case 403:
-            errorMessage =
-              "Permission denied. Please refresh the page and try again.";
-            break;
-          case 404:
-            errorMessage =
-              "AI analysis endpoint not found. Please check plugin installation.";
-            break;
-          case 500:
-            errorMessage =
-              "Internal server error during AI analysis. Check error logs.";
-            break;
-          case 0:
-            errorMessage = "Network error. Please check your connection.";
-            break;
-          default:
-            if (xhr.responseText) {
-              errorMessage =
-                "AI analysis error: " + xhr.responseText.substring(0, 100);
-            }
+          $("#scan-progress-container").hide();
+          statusArea.html(
+            '<div class="notice notice-error"><p>Server error. Please try again.</p></div>'
+          );
         }
-
-        alert(errorMessage + " Check browser console for details.");
-        button.prop("disabled", false);
-        button.text(originalText);
       },
     });
   }
 
   /**
-   * Update the AI verdict column with new analysis data
-   *
-   * @param {jQuery} button - The analyze button
-   * @param {Object} analysisData - The AI analysis result
+   * Stop the current scan
    */
-  function updateAIVerdictColumn(button, analysisData) {
-    const verdictContainer = button.closest("tr").find(".ai-verdict-container");
-    const explanation = analysisData.explanation || "";
-    const isMalware = analysisData.is_malware || false;
-    const suggestedFix = analysisData.suggested_fix || "";
+  function stopScan() {
+    const button = $("#stop-scan-button");
+    const startButton = $("#start-scan-button");
+    const resumeButton = $("#resume-scan-button");
+    const statusArea = $("#scan-status-area");
 
-    const verdictHtml = `
-      <div class="ai-verdict" style="max-width: 300px;">
-        <div style="margin-bottom: 5px;">
-          <span style="font-weight: 600; color: ${
-            isMalware ? "#d63638" : "#46b450"
-          };">
-            ${isMalware ? "⚠️ Malicious" : "✅ Appears Safe"}
-          </span>
-        </div>
-        <div style="font-size: 12px; color: #000000; opacity: 0.8; line-height: 1.4;">
-          ${
-            explanation.length > 100
-              ? explanation.substring(0, 100) + "..."
-              : explanation
-          }
-          ${
-            explanation.length > 100
-              ? '<a href="#" class="show-full-analysis" data-full-text="' +
-                explanation +
-                '" style="color: #FF7342;">Show More</a>'
-              : ""
-          }
-        </div>
-        ${
-          suggestedFix
-            ? '<div style="margin-top: 5px;"><small style="color: #FF7342; font-weight: 600;">Suggested: ' +
-              suggestedFix.charAt(0).toUpperCase() +
-              suggestedFix.slice(1) +
-              "</small></div>"
-            : ""
+    button.prop("disabled", true);
+    button.text("Stopping...");
+
+    // AJAX request to stop scan
+    $.ajax({
+      url: twss_data.ajax_url,
+      type: "POST",
+      data: {
+        action: "twss_stop_scan",
+        nonce: twss_data.nonce,
+      },
+      success: function (response) {
+        button.prop("disabled", false);
+        button.text(twss_data.i18n.stop_scan || "Stop Scan");
+
+        if (response.success) {
+          statusArea.html(
+            '<div class="notice notice-success"><p>Scan stopped successfully.</p></div>'
+          );
+
+          // Update UI to reflect scan stopped state
+          $("#scan-progress-container").hide();
+          resumeButton.prop("disabled", false);
+          resumeButton.text(twss_data.i18n.resume_scan || "Resume Scan");
+        } else {
+          statusArea.html(
+            '<div class="notice notice-error"><p>Error: ' +
+              (response.data.message || "Unknown error") +
+              "</p></div>"
+          );
         }
-      </div>
-    `;
+      },
+      error: function () {
+        button.prop("disabled", false);
+        button.text(twss_data.i18n.stop_scan || "Stop Scan");
+        alert("Error stopping scan. Please try again.");
+      },
+    });
+  }
 
-    verdictContainer.html(verdictHtml);
+  /**
+   * Clear all issues from the issues table
+   */
+  function clearAllIssues() {
+    if (confirm("Are you sure you want to clear all issues?")) {
+      const button = $("#clear-all-issues-button");
+      button.prop("disabled", true).text("Clearing...");
+
+      $.ajax({
+        url: twss_data.ajax_url,
+        type: "POST",
+        data: {
+          action: "twss_clear_all_issues",
+          nonce: twss_data.nonce,
+        },
+        success: function (response) {
+          button.prop("disabled", false).text("Clear All Issues");
+
+          if (response.success) {
+            // Show success message
+            alert("All issues cleared successfully.");
+            location.reload(); // Reload page to update issues table
+          } else {
+            alert("Error: " + response.data.message);
+          }
+        },
+        error: function () {
+          button.prop("disabled", false).text("Clear All Issues");
+          alert("Error clearing issues. Please try again.");
+        },
+      });
+    }
+  }
+
+  /**
+   * Clear issues for a specific scan
+   *
+   * @param {number} scanId - The scan ID
+   */
+  function clearScanIssues(scanId) {
+    if (confirm("Are you sure you want to clear issues for this scan?")) {
+      const button = $(".clear-scan-issues-button[data-scan-id='" + scanId + "']");
+      button.prop("disabled", true).text("Clearing...");
+
+      $.ajax({
+        url: twss_data.ajax_url,
+        type: "POST",
+        data: {
+          action: "twss_clear_scan_issues",
+          nonce: twss_data.nonce,
+          scan_id: scanId,
+        },
+        success: function (response) {
+          button.prop("disabled", false).text("Clear Scan Issues");
+
+          if (response.success) {
+            // Show success message
+            alert("Scan issues cleared successfully.");
+            location.reload(); // Reload page to update issues table
+          } else {
+            alert("Error: " + response.data.message);
+          }
+        },
+        error: function () {
+          button.prop("disabled", false).text("Clear Scan Issues");
+          alert("Error clearing scan issues. Please try again.");
+        },
+      });
+    }
+  }
+
+  /**
+   * Setup AI connection testing functionality
+   */
+  function setupAIConnectionTesting() {
+    // Test OpenAI API Key
+    $(document).on("click", "#test-openai-api", function (e) {
+      e.preventDefault();
+      var button = $(this);
+      var apiKey = $("#twss_openai_api_key").val();
+      var statusSpan = $("#openai-api-status");
+
+      if (!apiKey) {
+        statusSpan.html(
+          '<span style="color: #d63638;">Please enter an API key first</span>'
+        );
+        return;
+      }
+
+      button.prop("disabled", true).text("Testing...");
+      statusSpan.html(
+        '<span style="color: #FF7342;">Testing connection...</span>'
+      );
+
+      $.ajax({
+        url: twss_data.ajax_url,
+        type: "POST",
+        data: {
+          action: "twss_test_openai_api",
+          api_key: apiKey,
+          nonce: twss_data.nonce,
+        },
+        success: function (response) {
+          if (response.success) {
+            statusSpan.html(
+              '<span style="color: #46b450;">✓ ' +
+                response.data.message +
+                "</span>"
+            );
+          } else {
+            statusSpan.html(
+              '<span style="color: #d63638;">✗ ' +
+                response.data.message +
+                "</span>"
+            );
+          }
+        },
+        error: function () {
+          statusSpan.html(
+            '<span style="color: #d63638;">✗ Connection failed</span>'
+          );
+        },
+        complete: function () {
+          button.prop("disabled", false).text("Test API Key");
+        },
+      });
+    });
+
+    // Test Gemini API Key
+    $(document).on("click", "#test-gemini-api", function (e) {
+      e.preventDefault();
+      var button = $(this);
+      var apiKey = $("#twss_gemini_api_key").val();
+      var statusSpan = $("#gemini-api-status");
+
+      if (!apiKey) {
+        statusSpan.html(
+          '<span style="color: #d63638;">Please enter an API key first</span>'
+        );
+        return;
+      }
+
+      button.prop("disabled", true).text("Testing...");
+      statusSpan.html(
+        '<span style="color: #FF7342;">Testing connection...</span>'
+      );
+
+      $.ajax({
+        url: twss_data.ajax_url,
+        type: "POST",
+        data: {
+          action: "twss_test_gemini_api",
+          api_key: apiKey,
+          nonce: twss_data.nonce,
+        },
+        success: function (response) {
+          if (response.success) {
+            statusSpan.html(
+              '<span style="color: #46b450;">✓ ' +
+                response.data.message +
+                "</span>"
+            );
+          } else {
+            statusSpan.html(
+              '<span style="color: #d63638;">✗ ' +
+                response.data.message +
+                "</span>"
+            );
+          }
+        },
+        error: function () {
+          statusSpan.html(
+            '<span style="color: #d63638;">✗ Connection failed</span>'
+          );
+        },
+        complete: function () {
+          button.prop("disabled", false).text("Test API Key");
+        },
+      });
+    });
+  }
+
+  /**
+   * Setup OAuth flow handlers
+   */
+  function setupOAuthHandlers() {
+    // OAuth connection handlers
+    $(document).on("click", "#connect-openai-oauth", function (e) {
+      e.preventDefault();
+      initiateOAuthFlow("openai");
+    });
+
+    $(document).on("click", "#disconnect-openai-oauth", function (e) {
+      e.preventDefault();
+      disconnectOAuth("openai");
+    });
+
+    $(document).on("click", "#connect-gemini-oauth", function (e) {
+      e.preventDefault();
+      initiateOAuthFlow("gemini");
+    });
+
+    $(document).on("click", "#disconnect-gemini-oauth", function (e) {
+      e.preventDefault();
+      disconnectOAuth("gemini");
+    });
+
+    function initiateOAuthFlow(provider) {
+      // Get OAuth URL from server
+      $.ajax({
+        url: twss_data.ajax_url,
+        type: "POST",
+        data: {
+          action: "twss_get_oauth_url",
+          provider: provider,
+          nonce: twss_data.nonce,
+        },
+        success: function (response) {
+          if (response.success && response.data.url) {
+            // Open OAuth popup with the proper URL
+            var popup = window.open(
+              response.data.url,
+              "oauth_popup",
+              "width=600,height=600,scrollbars=yes,resizable=yes"
+            );
+
+            // Listen for OAuth completion
+            var checkClosed = setInterval(function () {
+              if (popup.closed) {
+                clearInterval(checkClosed);
+                location.reload(); // Refresh to show connected status
+              }
+            }, 1000);
+          } else {
+            alert(
+              "Error: " +
+                (response.data ? response.data.message : "OAuth not configured")
+            );
+          }
+        },
+        error: function () {
+          alert("Error connecting to OAuth service. Please try again.");
+        },
+      });
+    }
+
+    function disconnectOAuth(provider) {
+      if (
+        confirm("Are you sure you want to disconnect from " + provider + "?")
+      ) {
+        $.ajax({
+          url: twss_data.ajax_url,
+          type: "POST",
+          data: {
+            action: "twss_disconnect_oauth",
+            provider: provider,
+            nonce: twss_data.nonce,
+          },
+          success: function (response) {
+            if (response.success) {
+              location.reload();
+            } else {
+              alert("Error disconnecting: " + response.data.message);
+            }
+          },
+        });
+      }
+    }
+  }
+
+  /**
+   * Setup bulk actions for scan results
+   */
+  function setupBulkActions() {
+    // Bulk action handlers
+    $(document).on("click", "#bulk-fix-selected", function (e) {
+      e.preventDefault();
+      performBulkAction("fix");
+    });
+
+    $(document).on("click", "#bulk-quarantine-selected", function (e) {
+      e.preventDefault();
+      performBulkAction("quarantine");
+    });
+
+    $(document).on("click", "#bulk-delete-selected", function (e) {
+      e.preventDefault();
+      performBulkAction("delete");
+    });
+
+    $(document).on("click", "#bulk-whitelist-selected", function (e) {
+      e.preventDefault();
+      performBulkAction("whitelist");
+    });
+
+    // Select all checkbox
+    $(document).on("change", "#select-all-files", function () {
+      $(".file-checkbox").prop("checked", $(this).prop("checked"));
+      updateBulkActionButtons();
+    });
+
+    // Individual file checkboxes
+    $(document).on("change", ".file-checkbox", function () {
+      updateBulkActionButtons();
+    });
+
+    function performBulkAction(action) {
+      var selectedFiles = [];
+      $(".file-checkbox:checked").each(function () {
+        selectedFiles.push($(this).val());
+      });
+
+      if (selectedFiles.length === 0) {
+        alert("Please select at least one file.");
+        return;
+      }
+
+      if (confirm("Are you sure you want to " + action + " the selected files?")) {
+        // Perform the bulk action via AJAX
+        $.ajax({
+          url: twss_data.ajax_url,
+          type: "POST",
+          data: {
+            action: "twss_bulk_file_action",
+            bulk_action: action,
+            selected_files: selectedFiles,
+            nonce: twss_data.nonce,
+          },
+          success: function (response) {
+            if (response.success) {
+              location.reload();
+            } else {
+              alert("Error: " + (response.data.message || "Unknown error"));
+            }
+          },
+          error: function () {
+            alert("Error performing bulk action. Please try again.");
+          },
+        });
+      }
+    }
   }
 })(jQuery);

@@ -119,13 +119,20 @@ function is_wordpress_core_file($file_path)
 ?>
 
 <div class="wrap themewire-security-wrap">
-    <h1><?php _e('Security Issues', 'themewire-security'); ?></h1>
-
-    <!-- Debug: Add test button -->
-    <div style="margin-bottom: 20px; padding: 10px; background: #f0f0f1; border-radius: 5px;">
-        <strong>Debug:</strong>
-        <button type="button" id="test-ajax-button" class="button">Test AJAX Connection</button>
-        <span id="ajax-test-result"></span>
+    <div style="margin-bottom: 20px;">
+        <h1><?php _e('Security Issues', 'themewire-security'); ?></h1>
+        <?php if (!empty($issues)): ?>
+            <div>
+                <button id="clear-all-issues-button" class="button button-secondary" style="background-color: #dc3232; border-color: #dc3232; color: white; margin-right: 10px;">
+                    <?php _e('Clear All Issues', 'themewire-security'); ?>
+                </button>
+                <?php if ($scan): ?>
+                    <button class="clear-scan-issues-button button button-secondary" data-scan-id="<?php echo $scan['id']; ?>" style="background-color: #d63638; border-color: #d63638; color: white;">
+                        <?php _e('Clear This Scan', 'themewire-security'); ?>
+                    </button>
+                <?php endif; ?>
+            </div>
+        <?php endif; ?>
     </div>
 
     <?php if (empty($scan)): ?>
@@ -430,48 +437,10 @@ function is_wordpress_core_file($file_path)
     </div>
 
     <script>
-        // Simple modal for showing AI analysis
+        // Modal for showing AI analysis
         jQuery(document).ready(function($) {
             console.log('Issues page JavaScript loaded');
             console.log('Available action buttons:', $('.action-buttons button').length);
-
-            // Add test button handler
-            $('#test-ajax-button').on('click', function() {
-                console.log('Test AJAX button clicked');
-                var button = $(this);
-                var resultSpan = $('#ajax-test-result');
-
-                button.prop('disabled', true).text('Testing...');
-                resultSpan.html('');
-
-                $.ajax({
-                    url: twss_data.ajax_url,
-                    type: 'POST',
-                    data: {
-                        action: 'twss_test_connection',
-                        nonce: twss_data.nonce
-                    },
-                    success: function(response) {
-                        console.log('Test AJAX response:', response);
-                        button.prop('disabled', false).text('Test AJAX Connection');
-                        if (response.success) {
-                            resultSpan.html('<span style="color: green;">✓ ' + response.data.message + '</span>');
-                        } else {
-                            resultSpan.html('<span style="color: red;">✗ Failed: ' + (response.data ? response.data.message : 'Unknown error') + '</span>');
-                        }
-                    },
-                    error: function(xhr, status, error) {
-                        console.log('Test AJAX error:', xhr, status, error);
-                        button.prop('disabled', false).text('Test AJAX Connection');
-                        resultSpan.html('<span style="color: red;">✗ AJAX Error: ' + error + '</span>');
-                    }
-                });
-            });
-
-            // Add click handlers for debugging
-            $('.action-buttons button').on('click', function() {
-                console.log('Button clicked directly:', $(this).attr('class'), 'Issue ID:', $(this).data('issue-id'));
-            });
 
             var modal = $('#analysis-modal');
             var analysisContent = $('#analysis-content');

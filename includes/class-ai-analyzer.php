@@ -167,11 +167,17 @@ class Themewire_Security_AI_Analyzer
      */
     public function queue_file_for_analysis($scan_id, $file_path)
     {
+        // Only queue files that exist and are readable
+        if (!file_exists($file_path) || !is_readable($file_path)) {
+            return false;
+        }
+
         if (!isset($this->queued_files[$scan_id])) {
             $this->queued_files[$scan_id] = array();
         }
 
         $this->queued_files[$scan_id][] = $file_path;
+        return true;
     }
 
     /**
@@ -195,7 +201,26 @@ class Themewire_Security_AI_Analyzer
      */
     public function analyze_file($file_path)
     {
+        // Validate file exists and is readable before analysis
+        if (!file_exists($file_path) || !is_readable($file_path)) {
+            return array(
+                'is_malicious' => false,
+                'confidence' => 0,
+                'indicators' => array(),
+                'error' => 'File not found or not readable'
+            );
+        }
+
         $file_content = file_get_contents($file_path);
+        if ($file_content === false) {
+            return array(
+                'is_malicious' => false,
+                'confidence' => 0,
+                'indicators' => array(),
+                'error' => 'Failed to read file content'
+            );
+        }
+
         $file_extension = pathinfo($file_path, PATHINFO_EXTENSION);
 
         // Limit file content to prevent API limit issues
@@ -765,7 +790,12 @@ class Themewire_Security_AI_Analyzer
      */
     public function get_openai_oauth_url()
     {
-        $client_id = 'your-openai-app-client-id'; // This would be configured
+        $client_id = get_option('twss_openai_client_id', '');
+
+        if (empty($client_id)) {
+            return false; // OAuth not properly configured
+        }
+
         $redirect_uri = admin_url('admin.php?page=themewire-security-oauth-callback');
         $state = wp_create_nonce('openai_oauth_state');
 
@@ -788,7 +818,12 @@ class Themewire_Security_AI_Analyzer
      */
     public function get_gemini_oauth_url()
     {
-        $client_id = 'your-google-app-client-id.googleusercontent.com'; // This would be configured
+        $client_id = get_option('twss_gemini_client_id', '');
+
+        if (empty($client_id)) {
+            return false; // OAuth not properly configured
+        }
+
         $redirect_uri = admin_url('admin.php?page=themewire-security-oauth-callback');
         $state = wp_create_nonce('gemini_oauth_state');
 
@@ -797,9 +832,10 @@ class Themewire_Security_AI_Analyzer
             'redirect_uri' => $redirect_uri,
             'response_type' => 'code',
             'scope' => 'https://www.googleapis.com/auth/generative-language',
+            'access_type' => 'offline',
             'state' => $state
         );
 
-        return 'https://accounts.google.com/oauth/authorize?' . http_build_query($params);
+        return 'https://accounts.google.com/o/oauth2/v2/auth?' . http_build_query($params);
     }
 }

@@ -488,4 +488,56 @@ class Themewire_Security_Database
 
         return $progress;
     }
+
+    /**
+     * Clear all issues from database
+     *
+     * @since    1.0.2
+     * @return   boolean   True on success, false on failure
+     */
+    public function clear_all_issues()
+    {
+        global $wpdb;
+
+        $table_issues = $wpdb->prefix . 'twss_issues';
+        $table_scans = $wpdb->prefix . 'twss_scans';
+        $table_progress = $wpdb->prefix . 'twss_scan_progress';
+
+        // Clear all issues
+        $result1 = $wpdb->query("DELETE FROM $table_issues");
+
+        // Clear all scans
+        $result2 = $wpdb->query("DELETE FROM $table_scans");
+
+        // Clear all scan progress
+        $result3 = $wpdb->query("DELETE FROM $table_progress");
+
+        return ($result1 !== false && $result2 !== false && $result3 !== false);
+    }
+
+    /**
+     * Clear issues from a specific scan
+     *
+     * @since    1.0.2
+     * @param    int       $scan_id    Scan ID
+     * @return   boolean   True on success, false on failure
+     */
+    public function clear_scan_issues($scan_id)
+    {
+        global $wpdb;
+
+        $table_issues = $wpdb->prefix . 'twss_issues';
+        $table_progress = $wpdb->prefix . 'twss_scan_progress';
+
+        // Clear issues for this scan
+        $result1 = $wpdb->delete($table_issues, array('scan_id' => $scan_id), array('%d'));
+
+        // Clear progress for this scan
+        $result2 = $wpdb->delete($table_progress, array('scan_id' => $scan_id), array('%d'));
+
+        // Update scan record to show 0 issues
+        $this->update_scan_counts($scan_id, 0, 0);
+
+        return ($result1 !== false && $result2 !== false);
+    }
 }

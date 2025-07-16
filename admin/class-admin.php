@@ -122,6 +122,9 @@ class Themewire_Security_Admin
         if (strpos($screen->id, 'themewire-security') !== false) {
             wp_enqueue_script($this->plugin_name, TWSS_PLUGIN_URL . 'admin/assets/js/themewire-security-admin.js', array('jquery'), $this->version, true);
 
+            // Enqueue additional JavaScript for new features
+            wp_enqueue_script($this->plugin_name . '-additional', TWSS_PLUGIN_URL . 'admin/assets/js/themewire-security-additional.js', array('jquery', $this->plugin_name), $this->version, true);
+
             // Get current scan ID if exists
             $current_scan_id = get_option('twss_current_scan_id');
 
@@ -424,6 +427,16 @@ class Themewire_Security_Admin
             'themewire-security-version',
             array($this, 'display_version_page')
         );
+
+        // OAuth callback page (hidden from menu)
+        add_submenu_page(
+            null, // Parent slug null makes it hidden from menu
+            __('OAuth Callback', 'themewire-security'),
+            __('OAuth Callback', 'themewire-security'),
+            'manage_options',
+            'themewire-security-oauth-callback',
+            array($this, 'handle_oauth_callback')
+        );
     }
 
     /**
@@ -453,6 +466,13 @@ class Themewire_Security_Admin
         register_setting('twss_settings', 'twss_ai_provider');
         register_setting('twss_settings', 'twss_openai_api_key');
         register_setting('twss_settings', 'twss_gemini_api_key');
+
+        // OAuth settings for API providers
+        register_setting('twss_settings', 'twss_openai_client_id');
+        register_setting('twss_settings', 'twss_openai_client_secret');
+        register_setting('twss_settings', 'twss_gemini_client_id');
+        register_setting('twss_settings', 'twss_gemini_client_secret');
+
         register_setting('twss_settings', 'twss_scheduled_time');
         register_setting('twss_settings', 'twss_auto_fix');
         register_setting('twss_settings', 'twss_send_email');
@@ -868,6 +888,332 @@ class Themewire_Security_Admin
         } catch (Exception $e) {
             error_log('TWSS AI Analysis Error: ' . $e->getMessage());
             wp_send_json_error(__('An error occurred during AI analysis', 'themewire-security'));
+        }
+    }
+
+    /**
+     * Handle OAuth callback from authentication providers
+     *
+     * @since    1.0.2
+     */
+    public function handle_oauth_callback()
+    {
+        // Verify nonce for security
+        if (!isset($_GET['state']) || !wp_verify_nonce($_GET['state'], 'openai_oauth_state') && !wp_verify_nonce($_GET['state'], 'gemini_oauth_state')) {
+            wp_die(__('Invalid authentication state. Please try again.', 'themewire-security'));
+        }
+
+        // Check user capabilities
+        if (!current_user_can('manage_options')) {
+            wp_die(__('You do not have permission to access this page.', 'themewire-security'));
+        }
+
+        // Check for authorization code
+        if (!isset($_GET['code'])) {
+            wp_die(__('Authorization failed. No authorization code received.', 'themewire-security'));
+        }
+
+        $auth_code = sanitize_text_field($_GET['code']);
+        $state = sanitize_text_field($_GET['state']);
+
+        // Determine which provider this is for
+        $is_openai = wp_verify_nonce($state, 'openai_oauth_state');
+        $is_gemini = wp_verify_nonce($state, 'gemini_oauth_state');
+
+        if ($is_openai) {
+            $result = $this->process_openai_oauth_callback($auth_code);
+            $provider = 'OpenAI';
+        } elseif ($is_gemini) {
+            $result = $this->process_gemini_oauth_callback($auth_code);
+            $provider = 'Google/Gemini';
+        } else {
+            wp_die(__('Invalid authentication provider.', 'themewire-security'));
+        }
+
+        // Redirect with results
+        if ($result['success']) {
+            $redirect_url = admin_url('admin.php?page=themewire-security-settings&oauth_success=1&provider=' . urlencode($provider));
+        } else {
+            $redirect_url = admin_url('admin.php?page=themewire-security-settings&oauth_error=1&message=' . urlencode($result['message']));
+        }
+
+        wp_redirect($redirect_url);
+        exit;
+    }
+
+    /**
+     * Process OpenAI OAuth callback
+     *
+     * @since    1.0.2
+     * @param    string    $auth_code    Authorization code from OAuth provider
+     * @return   array     Result array with success status and message
+     */
+    private function process_openai_oauth_callback($auth_code)
+    {
+        // Exchange authorization code for access token
+        $client_id = get_option('twss_openai_client_id', '');
+        $client_secret = get_option('twss_openai_client_secret', '');
+        $redirect_uri = admin_url('admin.php?page=themewire-security-oauth-callback');
+
+        if (empty($client_id) || empty($client_secret)) {
+            return array(
+                'success' => false,
+                'message' => __('OpenAI OAuth credentials not configured. Please contact your administrator.', 'themewire-security')
+            );
+        }
+
+        $token_url = 'https://api.openai.com/v1/oauth/token';
+        $post_data = array(
+            'grant_type' => 'authorization_code',
+            'code' => $auth_code,
+            'redirect_uri' => $redirect_uri,
+            'client_id' => $client_id,
+            'client_secret' => $client_secret
+        );
+
+        $response = wp_remote_post($token_url, array(
+            'body' => $post_data,
+            'headers' => array(
+                'Content-Type' => 'application/x-www-form-urlencoded'
+            ),
+            'timeout' => 30
+        ));
+
+        if (is_wp_error($response)) {
+            return array(
+                'success' => false,
+                'message' => __('Failed to connect to OpenAI. Please try again.', 'themewire-security')
+            );
+        }
+
+        $response_code = wp_remote_retrieve_response_code($response);
+        $response_body = wp_remote_retrieve_body($response);
+
+        if ($response_code !== 200) {
+            return array(
+                'success' => false,
+                'message' => __('OpenAI authentication failed. Please check your credentials.', 'themewire-security')
+            );
+        }
+
+        $token_data = json_decode($response_body, true);
+        if (!$token_data || !isset($token_data['access_token'])) {
+            return array(
+                'success' => false,
+                'message' => __('Invalid token response from OpenAI.', 'themewire-security')
+            );
+        }
+
+        // Store the access token securely
+        update_option('twss_openai_oauth_token', $token_data['access_token']);
+        if (isset($token_data['refresh_token'])) {
+            update_option('twss_openai_refresh_token', $token_data['refresh_token']);
+        }
+        if (isset($token_data['expires_in'])) {
+            update_option('twss_openai_token_expires', time() + intval($token_data['expires_in']));
+        }
+
+        return array(
+            'success' => true,
+            'message' => __('Successfully connected to OpenAI!', 'themewire-security')
+        );
+    }
+
+    /**
+     * Process Google/Gemini OAuth callback
+     *
+     * @since    1.0.2
+     * @param    string    $auth_code    Authorization code from OAuth provider
+     * @return   array     Result array with success status and message
+     */
+    private function process_gemini_oauth_callback($auth_code)
+    {
+        // Exchange authorization code for access token
+        $client_id = get_option('twss_gemini_client_id', '');
+        $client_secret = get_option('twss_gemini_client_secret', '');
+        $redirect_uri = admin_url('admin.php?page=themewire-security-oauth-callback');
+
+        if (empty($client_id) || empty($client_secret)) {
+            return array(
+                'success' => false,
+                'message' => __('Google OAuth credentials not configured. Please contact your administrator.', 'themewire-security')
+            );
+        }
+
+        $token_url = 'https://oauth2.googleapis.com/token';
+        $post_data = array(
+            'grant_type' => 'authorization_code',
+            'code' => $auth_code,
+            'redirect_uri' => $redirect_uri,
+            'client_id' => $client_id,
+            'client_secret' => $client_secret
+        );
+
+        $response = wp_remote_post($token_url, array(
+            'body' => $post_data,
+            'headers' => array(
+                'Content-Type' => 'application/x-www-form-urlencoded'
+            ),
+            'timeout' => 30
+        ));
+
+        if (is_wp_error($response)) {
+            return array(
+                'success' => false,
+                'message' => __('Failed to connect to Google. Please try again.', 'themewire-security')
+            );
+        }
+
+        $response_code = wp_remote_retrieve_response_code($response);
+        $response_body = wp_remote_retrieve_body($response);
+
+        if ($response_code !== 200) {
+            return array(
+                'success' => false,
+                'message' => __('Google authentication failed. Please check your credentials.', 'themewire-security')
+            );
+        }
+
+        $token_data = json_decode($response_body, true);
+        if (!$token_data || !isset($token_data['access_token'])) {
+            return array(
+                'success' => false,
+                'message' => __('Invalid token response from Google.', 'themewire-security')
+            );
+        }
+
+        // Store the access token securely
+        update_option('twss_gemini_oauth_token', $token_data['access_token']);
+        if (isset($token_data['refresh_token'])) {
+            update_option('twss_gemini_refresh_token', $token_data['refresh_token']);
+        }
+        if (isset($token_data['expires_in'])) {
+            update_option('twss_gemini_token_expires', time() + intval($token_data['expires_in']));
+        }
+
+        return array(
+            'success' => true,
+            'message' => __('Successfully connected to Google/Gemini!', 'themewire-security')
+        );
+    }
+
+    /**
+     * AJAX handler for getting OAuth URL
+     *
+     * @since    1.0.2
+     */
+    public function ajax_get_oauth_url()
+    {
+        check_ajax_referer('twss_nonce', 'nonce');
+
+        if (!current_user_can('manage_options')) {
+            wp_send_json_error(__('You do not have permission to perform this action', 'themewire-security'));
+        }
+
+        $provider = sanitize_text_field($_POST['provider']);
+
+        if (!in_array($provider, array('openai', 'gemini'))) {
+            wp_send_json_error(__('Invalid provider', 'themewire-security'));
+        }
+
+        $ai_analyzer = new Themewire_Security_AI_Analyzer();
+
+        if ($provider === 'openai') {
+            $oauth_url = $ai_analyzer->get_openai_oauth_url();
+        } else {
+            $oauth_url = $ai_analyzer->get_gemini_oauth_url();
+        }
+
+        if ($oauth_url === false) {
+            wp_send_json_error(__('OAuth credentials not configured. Please contact your administrator.', 'themewire-security'));
+        }
+
+        wp_send_json_success(array('url' => $oauth_url));
+    }
+
+    /**
+     * AJAX handler for stopping scan
+     *
+     * @since    1.0.2
+     */
+    public function ajax_stop_scan()
+    {
+        check_ajax_referer('twss_nonce', 'nonce');
+
+        if (!current_user_can('manage_options')) {
+            wp_send_json_error(__('You do not have permission to perform this action', 'themewire-security'));
+        }
+
+        $result = $this->scanner->stop_scan();
+
+        if ($result['success']) {
+            wp_send_json_success($result);
+        } else {
+            wp_send_json_error($result);
+        }
+    }
+
+    /**
+     * AJAX handler for clearing all issues
+     *
+     * @since    1.0.2
+     */
+    public function ajax_clear_all_issues()
+    {
+        check_ajax_referer('twss_nonce', 'nonce');
+
+        if (!current_user_can('manage_options')) {
+            wp_send_json_error(__('You do not have permission to perform this action', 'themewire-security'));
+        }
+
+        $result = $this->database->clear_all_issues();
+
+        if ($result) {
+            // Also clear scan state options
+            delete_option('twss_current_scan_id');
+
+            // Clear any scan-related transients
+            $this->scanner->clear_scan_checkpoints();
+
+            wp_send_json_success(array(
+                'message' => __('All issues and scan history cleared successfully', 'themewire-security')
+            ));
+        } else {
+            wp_send_json_error(array(
+                'message' => __('Error clearing issues. Please try again.', 'themewire-security')
+            ));
+        }
+    }
+
+    /**
+     * AJAX handler for clearing issues from specific scan
+     *
+     * @since    1.0.2
+     */
+    public function ajax_clear_scan_issues()
+    {
+        check_ajax_referer('twss_nonce', 'nonce');
+
+        if (!current_user_can('manage_options')) {
+            wp_send_json_error(__('You do not have permission to perform this action', 'themewire-security'));
+        }
+
+        $scan_id = intval($_POST['scan_id']);
+
+        if (empty($scan_id)) {
+            wp_send_json_error(__('Invalid scan ID', 'themewire-security'));
+        }
+
+        $result = $this->database->clear_scan_issues($scan_id);
+
+        if ($result) {
+            wp_send_json_success(array(
+                'message' => __('Scan issues cleared successfully', 'themewire-security')
+            ));
+        } else {
+            wp_send_json_error(array(
+                'message' => __('Error clearing scan issues. Please try again.', 'themewire-security')
+            ));
         }
     }
 }

@@ -46,6 +46,16 @@ $scan = $wpdb->get_row("SELECT * FROM {$wpdb->prefix}twss_scans ORDER BY scan_da
         <button id="start-scan-button" class="button button-primary" <?php echo $scan_in_progress ? 'disabled' : ''; ?>>
             <?php echo $scan_in_progress ? __('Scan in progress...', 'themewire-security') : __('Start New Scan', 'themewire-security'); ?>
         </button>
+
+        <?php if ($scan_in_progress): ?>
+            <button id="stop-scan-button" class="button button-secondary" style="margin-left: 10px;">
+                <?php _e('Stop Scan', 'themewire-security'); ?>
+            </button>
+        <?php endif; ?>
+
+        <button id="clear-all-issues-button" class="button button-secondary" style="margin-left: 10px; background-color: #dc3232; border-color: #dc3232; color: white;">
+            <?php _e('Clear All Issues', 'themewire-security'); ?>
+        </button>
     </div>
 
     <div id="scan-progress-container" style="display: none;" class="card">

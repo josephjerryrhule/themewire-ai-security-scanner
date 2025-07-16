@@ -587,6 +587,15 @@ class Themewire_Security_Fixer
      */
     public function validate_plugin_file($file_path)
     {
+        // Validate file exists and is readable before validation
+        if (!file_exists($file_path) || !is_readable($file_path)) {
+            return array(
+                'is_malicious' => false,
+                'confidence' => 0,
+                'indicators' => array('File not found or not readable')
+            );
+        }
+
         // Get plugin directory
         $plugin_dir = dirname($file_path);
         $plugin_name = basename($plugin_dir);
@@ -650,13 +659,22 @@ class Themewire_Security_Fixer
      */
     public function advanced_malware_analysis($file_path)
     {
+        // Validate file exists and is readable before analysis
+        if (!file_exists($file_path) || !is_readable($file_path)) {
+            return array(
+                'is_malicious' => false,
+                'confidence' => 0,
+                'indicators' => array('File not found or not readable')
+            );
+        }
+
         $file_content = file_get_contents($file_path);
 
         if ($file_content === false) {
             return array(
                 'is_malicious' => false,
                 'confidence' => 0,
-                'indicators' => array()
+                'indicators' => array('Failed to read file content')
             );
         }
 

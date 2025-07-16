@@ -9,6 +9,19 @@
  * @package    Themewire_Security
  */
 
+// Handle OAuth callback success/error messages
+if (isset($_GET['oauth_success']) && $_GET['oauth_success'] == '1') {
+    $provider = sanitize_text_field($_GET['provider']);
+    echo '<div class="notice notice-success is-dismissible"><p>' .
+        sprintf(__('Successfully connected to %s!', 'themewire-security'), $provider) .
+        '</p></div>';
+}
+
+if (isset($_GET['oauth_error']) && $_GET['oauth_error'] == '1') {
+    $message = isset($_GET['message']) ? sanitize_text_field($_GET['message']) : __('OAuth authentication failed', 'themewire-security');
+    echo '<div class="notice notice-error is-dismissible"><p>' . $message . '</p></div>';
+}
+
 // Save settings if form is submitted
 if (isset($_POST['twss_settings_submit'])) {
     check_admin_referer('twss_settings_nonce');

@@ -124,6 +124,7 @@ class Themewire_Security
         // Ajax handlers - using add_action directly to ensure they work
         add_action('wp_ajax_twss_start_scan', array($plugin_admin, 'ajax_start_scan'));
         add_action('wp_ajax_twss_resume_scan', array($plugin_admin, 'ajax_resume_scan'));
+        add_action('wp_ajax_twss_stop_scan', array($plugin_admin, 'ajax_stop_scan'));
         add_action('wp_ajax_twss_get_scan_status', array($plugin_admin, 'ajax_get_scan_status'));
         add_action('wp_ajax_twss_fix_issue', array($plugin_admin, 'ajax_fix_issue'));
         add_action('wp_ajax_twss_quarantine_file', array($plugin_admin, 'ajax_quarantine_file'));
@@ -132,6 +133,9 @@ class Themewire_Security
         add_action('wp_ajax_twss_test_openai_api', array($plugin_admin, 'ajax_test_openai_api'));
         add_action('wp_ajax_twss_test_gemini_api', array($plugin_admin, 'ajax_test_gemini_api'));
         add_action('wp_ajax_twss_disconnect_oauth', array($plugin_admin, 'ajax_disconnect_oauth'));
+        add_action('wp_ajax_twss_get_oauth_url', array($plugin_admin, 'ajax_get_oauth_url'));
+        add_action('wp_ajax_twss_clear_all_issues', array($plugin_admin, 'ajax_clear_all_issues'));
+        add_action('wp_ajax_twss_clear_scan_issues', array($plugin_admin, 'ajax_clear_scan_issues'));
         add_action('wp_ajax_twss_bulk_file_action', array($plugin_admin, 'ajax_bulk_file_action'));
         add_action('wp_ajax_twss_restore_core_file', array($plugin_admin, 'ajax_restore_core_file'));
         add_action('wp_ajax_twss_test_connection', array($plugin_admin, 'ajax_test_connection'));
