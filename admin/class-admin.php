@@ -1221,4 +1221,28 @@ class Themewire_Security_Admin
             ));
         }
     }
+
+    /**
+     * AJAX handler for cleaning up ghost files from issues table
+     *
+     * @since    1.0.21
+     */
+    public function ajax_cleanup_ghost_files()
+    {
+        check_ajax_referer('twss_nonce', 'nonce');
+
+        if (!current_user_can('manage_options')) {
+            wp_send_json_error(__('You do not have permission to perform this action', 'themewire-security'));
+        }
+
+        $ghost_count = $this->database->cleanup_ghost_issues();
+
+        wp_send_json_success(array(
+            'message' => sprintf(
+                __('Cleaned up %d ghost files from scan results', 'themewire-security'),
+                $ghost_count
+            ),
+            'ghost_count' => $ghost_count
+        ));
+    }
 }

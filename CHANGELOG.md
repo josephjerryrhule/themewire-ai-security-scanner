@@ -1,5 +1,26 @@
 # Changelog
 
+## [1.0.21] - 2025-07-22
+
+### Added
+- **Manual Ghost File Cleanup**: Added "Clean Ghost Files" button to scan page for manual cleanup of non-existent files
+  - New AJAX endpoint `twss_cleanup_ghost_files` for manual ghost file cleanup
+  - Enhanced cleanup method to specifically check for non-existent themes and plugins
+  - Button appears in scan page alongside other cleanup options
+  - Provides user feedback showing count of ghost files removed
+
+### Enhanced
+- **Comprehensive Ghost File Detection**: Improved ghost file detection to catch theme and plugin directory issues
+  - Checks for theme files referencing non-existent theme directories
+  - Validates plugin files against actual plugin directory existence  
+  - Prevents scan results from showing files for uninstalled themes/plugins like twentytwentyfour, twentytwentyfive, akismet
+  - More thorough validation prevents ghost entries from persisting in database
+
+### Fixed
+- **Ghost File Persistence**: Addresses issue where scan results show files from themes/plugins that don't exist on WordPress instance
+  - Enhanced database cleanup specifically targets theme and plugin ghost files
+  - Manual cleanup option allows users to immediately remove ghost files from existing scan results
+
 ## [1.0.20] - 2025-07-22
 
 ### Fixed

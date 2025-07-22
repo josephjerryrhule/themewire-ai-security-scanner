@@ -56,6 +56,10 @@ $scan = $wpdb->get_row("SELECT * FROM {$wpdb->prefix}twss_scans ORDER BY scan_da
         <button id="clear-all-issues-button" class="button button-secondary" style="margin-left: 10px; background-color: #dc3232; border-color: #dc3232; color: white;">
             <?php _e('Clear All Issues', 'themewire-security'); ?>
         </button>
+
+        <button id="cleanup-ghost-files-button" class="button button-secondary" style="margin-left: 10px; background-color: #f56e28; border-color: #f56e28; color: white;">
+            <?php _e('Clean Ghost Files', 'themewire-security'); ?>
+        </button>
     </div>
 
     <div id="scan-progress-container" style="display: none;" class="card">
