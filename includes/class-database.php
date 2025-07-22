@@ -632,11 +632,12 @@ class Themewire_Security_Database
         $table_issues = $wpdb->prefix . 'twss_issues';
 
         // Get all issues that are not about missing files
-        $issues = $wpdb->get_results($wpdb->prepare(
+        $issues = $wpdb->get_results(
             "SELECT id, file_path, issue_type FROM {$table_issues} 
              WHERE issue_type NOT IN ('core_file_missing', 'plugin_file_missing', 'theme_file_missing')
              AND status = 'pending'",
-        ), ARRAY_A);
+            ARRAY_A
+        );
 
         $ghost_count = 0;
         $ghost_ids = array();
@@ -658,6 +659,61 @@ class Themewire_Security_Database
                 $ghost_ids[] = intval($issue['id']);
                 $ghost_count++;
                 error_log("TWSS: Found ghost issue for non-existent file: {$file_path} (Issue ID: {$issue['id']})");
+            }
+        }
+
+        // Also check for ghost theme and plugin files specifically
+        // Look for themes that don't exist on the system
+        $theme_issues = $wpdb->get_results(
+            "SELECT id, file_path, issue_type FROM {$table_issues}
+             WHERE file_path LIKE '%/themes/%'
+             AND status = 'pending'",
+            ARRAY_A
+        );
+
+        foreach ($theme_issues as $issue) {
+            $file_path = $issue['file_path'];
+
+            // Extract theme name from path
+            if (preg_match('/\/themes\/([^\/]+)/', $file_path, $matches)) {
+                $theme_name = $matches[1];
+                $theme_dir = get_theme_root() . '/' . $theme_name;
+
+                // If theme directory doesn't exist, it's a ghost file
+                if (!is_dir($theme_dir)) {
+                    if (!in_array(intval($issue['id']), $ghost_ids)) {
+                        $ghost_ids[] = intval($issue['id']);
+                        $ghost_count++;
+                        error_log("TWSS: Found ghost theme issue for non-existent theme: {$theme_name} (Issue ID: {$issue['id']})");
+                    }
+                }
+            }
+        }
+
+        // Look for plugins that don't exist on the system
+        $plugin_issues = $wpdb->get_results(
+            "SELECT id, file_path, issue_type FROM {$table_issues}
+             WHERE file_path LIKE '%/plugins/%'
+             AND status = 'pending'",
+            ARRAY_A
+        );
+
+        foreach ($plugin_issues as $issue) {
+            $file_path = $issue['file_path'];
+
+            // Extract plugin directory name from path
+            if (preg_match('/\/plugins\/([^\/]+)/', $file_path, $matches)) {
+                $plugin_dir = $matches[1];
+                $full_plugin_dir = WP_PLUGIN_DIR . '/' . $plugin_dir;
+
+                // If plugin directory doesn't exist, it's a ghost file
+                if (!is_dir($full_plugin_dir)) {
+                    if (!in_array(intval($issue['id']), $ghost_ids)) {
+                        $ghost_ids[] = intval($issue['id']);
+                        $ghost_count++;
+                        error_log("TWSS: Found ghost plugin issue for non-existent plugin: {$plugin_dir} (Issue ID: {$issue['id']})");
+                    }
+                }
             }
         }
 

@@ -79,6 +79,12 @@
       }
     });
 
+    // Handle Clean Ghost Files button click
+    $("#cleanup-ghost-files-button").on("click", function () {
+      console.log("Clean ghost files button clicked");
+      cleanupGhostFiles();
+    });
+
     // Handle Clear Scan Issues button click (uses global function from additional.js)
     $(document).on("click", ".clear-scan-issues-button", function () {
       var scanId = $(this).data("scan-id");
@@ -2542,7 +2548,14 @@
    * @param {string} originalText - Original button text to restore
    * @param {object} extraData - Additional data to send with the request
    */
-  function performIssueAction(button, action, issueId, loadingText, originalText, extraData) {
+  function performIssueAction(
+    button,
+    action,
+    issueId,
+    loadingText,
+    originalText,
+    extraData
+  ) {
     if (!issueId) {
       alert("Invalid issue ID");
       return;
@@ -2557,11 +2570,11 @@
     var ajaxData = {
       action: action,
       issue_id: issueId,
-      nonce: twss_data.nonce
+      nonce: twss_data.nonce,
     };
 
     // Add any extra data
-    if (extraData && typeof extraData === 'object') {
+    if (extraData && typeof extraData === "object") {
       $.extend(ajaxData, extraData);
     }
 
@@ -2574,11 +2587,11 @@
         if (response.success) {
           // Show success message
           alert(response.data.message || "Action completed successfully!");
-          
+
           // Remove the issue row from the table if action was successful
-          var issueRow = button.closest('tr');
+          var issueRow = button.closest("tr");
           if (issueRow.length) {
-            issueRow.fadeOut(300, function() {
+            issueRow.fadeOut(300, function () {
               $(this).remove();
             });
           } else {
@@ -2589,15 +2602,15 @@
           alert("Error: " + (response.data.message || "Action failed"));
         }
       },
-      error: function(xhr, status, error) {
-        console.error('AJAX Error:', status, error);
+      error: function (xhr, status, error) {
+        console.error("AJAX Error:", status, error);
         alert("Error performing action. Please try again.");
       },
       complete: function () {
         // Re-enable button and restore original text
         button.prop("disabled", false);
         button.text(buttonOriginalText);
-      }
+      },
     });
   }
 
@@ -2762,5 +2775,49 @@
 
     // Update global reference for stop scan functionality
     window.twssPollInterval = pollInterval;
+  }
+
+  /**
+   * Clean up ghost files from scan results
+   */
+  function cleanupGhostFiles() {
+    if (
+      confirm(
+        "Clean up ghost files from scan results? This will remove entries for files that no longer exist on your WordPress instance."
+      )
+    ) {
+      const button = $("#cleanup-ghost-files-button");
+      const originalText = button.text();
+
+      button.prop("disabled", true).text("Cleaning...");
+
+      $.ajax({
+        url: twss_data.ajax_url,
+        type: "POST",
+        data: {
+          action: "twss_cleanup_ghost_files",
+          nonce: twss_data.nonce,
+        },
+        success: function (response) {
+          button.prop("disabled", false).text(originalText);
+
+          if (response.success) {
+            // Show success message with count
+            alert(response.data.message);
+
+            // Reload page if ghost files were found and removed
+            if (response.data.ghost_count > 0) {
+              location.reload();
+            }
+          } else {
+            alert("Error: " + (response.data.message || "Unknown error"));
+          }
+        },
+        error: function () {
+          button.prop("disabled", false).text(originalText);
+          alert("Error cleaning up ghost files. Please try again.");
+        },
+      });
+    }
   }
 })(jQuery);
