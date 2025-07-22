@@ -162,6 +162,7 @@ $remove_data = get_option('twss_remove_data_on_uninstall', false);
                                 <input type="text" name="twss_openrouter_api_key" id="twss_openrouter_api_key" value="<?php echo esc_attr($openrouter_api_key); ?>" class="regular-text" placeholder="sk-or-..." />
                                 <button type="button" id="test-openrouter-api" class="button"><?php _e('Test API Key', 'themewire-security'); ?></button>
                                 <br />
+                                <span id="openrouter-api-status"></span>
                                 <p class="description"><?php _e('Enter your OpenRouter API key. Get one at', 'themewire-security'); ?> <a href="https://openrouter.ai/keys" target="_blank">https://openrouter.ai/keys</a></p>
                                 <p class="description"><?php _e('OpenRouter provides access to multiple AI models including Claude, GPT-4, Llama, and more.', 'themewire-security'); ?></p>
                             </div>
