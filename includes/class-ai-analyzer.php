@@ -791,7 +791,7 @@ class Themewire_Security_AI_Analyzer
         );
 
         foreach ($malicious_hooks as $hook) {
-            if (preg_match("/add_action\s*\(\s*['\"]$hook['\"].*(\\\$_POST|\\\$_GET|eval)/", $content)) {
+            if (preg_match("/add_action\s*\(\s*['\"]" . $hook . "['\"].*(\\\$_POST|\\\$_GET|eval)/", $content)) {
                 $indicators[] = "Malicious WordPress hook: {$hook}";
                 $confidence += 30;
             }
