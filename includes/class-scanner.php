@@ -2397,22 +2397,279 @@ class Themewire_Security_Scanner
     }
 
     /**
-     * Process core files chunk for chunked scanning
+     * Scan a single file for malware and security issues
      *
-     * @since    1.0.23
+     * @since    1.0.28
+     * @param    int $scan_id The scan ID
+     * @param    string $file_path Path to the file to scan
+     * @param    string $file_type Type of file (core, plugin, theme, upload)
+     * @return   array Scan results
+     */
+    private function scan_file($scan_id, $file_path, $file_type)
+    {
+        if (!file_exists($file_path) || !is_readable($file_path)) {
+            return array(
+                'success' => false,
+                'message' => 'File not accessible: ' . $file_path
+            );
+        }
+
+        // Skip if file is too large
+        if (filesize($file_path) > 10 * 1024 * 1024) { // 10MB limit
+            return array(
+                'success' => true,
+                'message' => 'Skipped large file: ' . $file_path
+            );
+        }
+
+        $results = array();
+        
+        // Scan for malware signatures
+        $malware_result = $this->scan_file_for_malware($file_path);
+        if (!empty($malware_result['issues'])) {
+            foreach ($malware_result['issues'] as $issue) {
+                $metadata = json_encode(array(
+                    'line_number' => isset($issue['line_number']) ? $issue['line_number'] : 0,
+                    'code_snippet' => isset($issue['code_snippet']) ? $issue['code_snippet'] : '',
+                    'detection_type' => 'malware'
+                ));
+                
+                $this->database->record_issue(
+                    $scan_id,
+                    $file_path,
+                    'malware',
+                    $issue['severity'],
+                    $issue['description'],
+                    '',
+                    $metadata
+                );
+            }
+            $results = array_merge($results, $malware_result['issues']);
+        }
+
+        // For JS files, also scan for obfuscation
+        if (pathinfo($file_path, PATHINFO_EXTENSION) === 'js') {
+            $obfuscation_result = $this->scan_file_for_obfuscated_js($file_path);
+            if (!empty($obfuscation_result['issues'])) {
+                foreach ($obfuscation_result['issues'] as $issue) {
+                    $metadata = json_encode(array(
+                        'line_number' => isset($issue['line_number']) ? $issue['line_number'] : 0,
+                        'code_snippet' => isset($issue['code_snippet']) ? $issue['code_snippet'] : '',
+                        'detection_type' => 'obfuscation'
+                    ));
+                    
+                    $this->database->record_issue(
+                        $scan_id,
+                        $file_path,
+                        'obfuscation',
+                        $issue['severity'],
+                        $issue['description'],
+                        '',
+                        $metadata
+                    );
+                }
+                $results = array_merge($results, $obfuscation_result['issues']);
+            }
+        }
+
+        return array(
+            'success' => true,
+            'issues_found' => count($results),
+            'issues' => $results
+        );
+    }
+
+    /**
+     * Get core files for scanning
+     *
+     * @since    1.0.28
+     * @return   array    Array of core file paths
+     */
+    private function get_core_files()
+    {
+        $core_dir = ABSPATH;
+        return $this->get_prioritized_files($core_dir, 1000);
+    }
+
+    /**
+     * Get plugin files for scanning
+     *
+     * @since    1.0.28
+     * @return   array    Array of plugin file paths
+     */
+    private function get_plugin_files()
+    {
+        $plugin_dir = WP_PLUGIN_DIR;
+        if (!is_dir($plugin_dir)) {
+            return array();
+        }
+        
+        $plugin_files = array();
+        
+        // Get active plugins only to avoid scanning inactive ones
+        $active_plugins = get_option('active_plugins', array());
+        foreach ($active_plugins as $plugin) {
+            $plugin_path = $plugin_dir . '/' . dirname($plugin);
+            if (is_dir($plugin_path)) {
+                $files = $this->find_php_files($plugin_path);
+                $plugin_files = array_merge($plugin_files, $files);
+            }
+        }
+        
+        // Add network plugins for multisite
+        if (is_multisite()) {
+            $network_plugins = get_site_option('active_sitewide_plugins', array());
+            foreach (array_keys($network_plugins) as $plugin) {
+                $plugin_path = $plugin_dir . '/' . dirname($plugin);
+                if (is_dir($plugin_path)) {
+                    $files = $this->find_php_files($plugin_path);
+                    $plugin_files = array_merge($plugin_files, $files);
+                }
+            }
+        }
+        
+        return array_unique($plugin_files);
+    }
+
+    /**
+     * Get theme files for scanning
+     *
+     * @since    1.0.28
+     * @return   array    Array of theme file paths
+     */
+    private function get_theme_files()
+    {
+        $themes_dir = get_theme_root();
+        if (!is_dir($themes_dir)) {
+            return array();
+        }
+        
+        $theme_files = array();
+        
+        // Get active theme
+        $active_theme = wp_get_theme();
+        $active_theme_path = $themes_dir . '/' . $active_theme->get_stylesheet();
+        if (is_dir($active_theme_path)) {
+            $files = $this->find_php_files($active_theme_path);
+            $theme_files = array_merge($theme_files, $files);
+        }
+        
+        // Add parent theme if child theme is active
+        if ($active_theme->parent()) {
+            $parent_theme_path = $themes_dir . '/' . $active_theme->get_template();
+            if (is_dir($parent_theme_path)) {
+                $files = $this->find_php_files($parent_theme_path);
+                $theme_files = array_merge($theme_files, $files);
+            }
+        }
+        
+        return array_unique($theme_files);
+    }
+
+    /**
+     * Get upload files for scanning (looking for PHP files in uploads)
+     *
+     * @since    1.0.28
+     * @return   array    Array of upload file paths
+     */
+    private function get_upload_files()
+    {
+        $uploads_dir = wp_upload_dir();
+        if (!isset($uploads_dir['basedir']) || !is_dir($uploads_dir['basedir'])) {
+            return array();
+        }
+        
+        // Find PHP files in uploads (which are usually suspicious)
+        return $this->find_php_files($uploads_dir['basedir']);
+    }
+
+    /**
+     * Process core files chunk for chunked scanning (fixed implementation)
+     *
+     * @since    1.0.28
      * @param    int $scan_id The scan ID
      * @param    array $scan_state Current scan state
      * @return   array Chunk processing result
      */
     private function process_core_files_chunk($scan_id, $scan_state)
     {
-        // Skip core scan for now to keep it simple
+        if ($scan_state['batch_offset'] == 0) {
+            // First chunk - get all core files
+            $core_files = $this->get_core_files();
+            set_transient('twss_scan_core_files', $core_files, HOUR_IN_SECONDS);
+            
+            if (empty($core_files)) {
+                return array(
+                    'stage_complete' => true,
+                    'next_stage' => 'plugins',
+                    'progress' => 100,
+                    'next_offset' => 0,
+                    'message' => __('Core scan completed - no files found', 'themewire-security')
+                );
+            }
+        } else {
+            // Get cached core files list
+            $core_files = get_transient('twss_scan_core_files');
+            if (!$core_files) {
+                $core_files = $this->get_core_files();
+            }
+        }
+
+        if (empty($core_files)) {
+            return array(
+                'stage_complete' => true,
+                'next_stage' => 'plugins',
+                'progress' => 100,
+                'next_offset' => 0,
+                'message' => __('Core scan completed - no files found', 'themewire-security')
+            );
+        }
+
+        $batch_size = $this->batch_size;
+        $offset = $scan_state['batch_offset'];
+        $files_chunk = array_slice($core_files, $offset, $batch_size);
+
+        if (empty($files_chunk)) {
+            delete_transient('twss_scan_core_files');
+            return array(
+                'stage_complete' => true,
+                'next_stage' => 'plugins',
+                'progress' => 100,
+                'next_offset' => 0,
+                'message' => __('Core files scanned successfully', 'themewire-security')
+            );
+        }
+
+        $files_scanned = 0;
+        $start_time = time();
+
+        foreach ($files_chunk as $file_info) {
+            $file_path = isset($file_info['path']) ? $file_info['path'] : $file_info;
+            $this->scan_file($scan_id, $file_path, 'core');
+            $files_scanned++;
+
+            if ((time() - $start_time) > $this->chunk_time_limit) {
+                break;
+            }
+        }
+
+        $total_files = count($core_files);
+        $processed_files = $offset + $files_scanned;
+        $progress = min(100, ($processed_files / $total_files) * 100);
+
+        $this->database->update_scan_progress(
+            $scan_id,
+            'core',
+            $progress,
+            sprintf(__('Scanned %d of %d core files', 'themewire-security'), $processed_files, $total_files)
+        );
+
         return array(
-            'stage_complete' => true,
+            'stage_complete' => ($processed_files >= $total_files),
             'next_stage' => 'plugins',
-            'progress' => 100,
-            'next_offset' => 0,
-            'message' => __('WordPress core scan completed', 'themewire-security')
+            'progress' => $progress,
+            'next_offset' => $offset + $files_scanned,
+            'message' => sprintf(__('Processing core files... %d/%d', 'themewire-security'), $processed_files, $total_files)
         );
     }
 

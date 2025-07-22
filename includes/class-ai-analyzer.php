@@ -92,36 +92,6 @@ class Themewire_Security_AI_Analyzer
     }
 
     /**
-     * Initialize AI clients with OAuth support
-     *
-     * @since    1.0.2
-     */
-    private function init_ai_clients_with_oauth()
-    {
-        $ai_provider = get_option('twss_ai_provider', 'openai');
-
-        if ($ai_provider === 'openai') {
-            $api_key = get_option('twss_openai_api_key', '');
-            $oauth_token = get_option('twss_openai_oauth_token', '');
-
-            if (!empty($api_key)) {
-                $this->init_openai_client($api_key);
-            } else if (!empty($oauth_token)) {
-                $this->init_openai_oauth_client($oauth_token);
-            }
-        } else if ($ai_provider === 'gemini') {
-            $api_key = get_option('twss_gemini_api_key', '');
-            $oauth_token = get_option('twss_gemini_oauth_token', '');
-
-            if (!empty($api_key)) {
-                $this->init_gemini_client($api_key);
-            } else if (!empty($oauth_token)) {
-                $this->init_gemini_oauth_client($oauth_token);
-            }
-        }
-    }
-
-    /**
      * Initialize OpenAI API client
      *
      * @since    1.0.0
@@ -158,32 +128,6 @@ class Themewire_Security_AI_Analyzer
         // Initialize OpenRouter client
         $this->openrouter_client = new stdClass();
         $this->openrouter_client->api_key = $api_key;
-    }
-
-    /**
-     * Initialize OpenAI OAuth client
-     *
-     * @since    1.0.2
-     * @param    string    $oauth_token    OAuth token
-     */
-    private function init_openai_oauth_client($oauth_token)
-    {
-        $this->openai_client = new stdClass();
-        $this->openai_client->oauth_token = $oauth_token;
-        $this->openai_client->is_oauth = true;
-    }
-
-    /**
-     * Initialize Gemini OAuth client
-     *
-     * @since    1.0.2
-     * @param    string    $oauth_token    OAuth token
-     */
-    private function init_gemini_oauth_client($oauth_token)
-    {
-        $this->gemini_client = new stdClass();
-        $this->gemini_client->oauth_token = $oauth_token;
-        $this->gemini_client->is_oauth = true;
     }
 
     /**
@@ -1292,6 +1236,9 @@ class Themewire_Security_AI_Analyzer
      */
     private function parse_ai_response($response)
     {
+        // Sanitize raw JSON response if it contains JSON
+        $response = $this->sanitize_ai_response($response);
+        
         // Default values
         $result = array(
             'is_malware' => false,
@@ -1358,6 +1305,67 @@ class Themewire_Security_AI_Analyzer
         }
 
         return $result;
+    }
+
+    /**
+     * Sanitize AI response to handle raw JSON or malformed responses
+     *
+     * @since    1.0.28
+     * @param    string    $response    Raw AI response
+     * @return   string    Sanitized response
+     */
+    private function sanitize_ai_response($response)
+    {
+        // Check if response is JSON
+        if ($this->is_json($response)) {
+            $json_data = json_decode($response, true);
+            
+            // If JSON decoding successful, extract the actual text response
+            if (is_array($json_data)) {
+                // Handle different AI response formats
+                if (isset($json_data['choices'][0]['message']['content'])) {
+                    // OpenAI format
+                    return $json_data['choices'][0]['message']['content'];
+                } elseif (isset($json_data['candidates'][0]['content']['parts'][0]['text'])) {
+                    // Gemini format
+                    return $json_data['candidates'][0]['content']['parts'][0]['text'];
+                } elseif (isset($json_data['content'])) {
+                    // Generic content field
+                    return $json_data['content'];
+                } elseif (isset($json_data['text'])) {
+                    // Generic text field
+                    return $json_data['text'];
+                } elseif (isset($json_data['response'])) {
+                    // Generic response field
+                    return $json_data['response'];
+                }
+            }
+        }
+
+        // Clean up any JSON artifacts or escape sequences
+        $cleaned = preg_replace('/\\\\["\\/bfnrt]/', ' ', $response);
+        $cleaned = preg_replace('/[{}"\[\]]/', '', $cleaned);
+        $cleaned = preg_replace('/\s+/', ' ', $cleaned);
+        $cleaned = trim($cleaned);
+
+        return $cleaned;
+    }
+
+    /**
+     * Check if string is valid JSON
+     *
+     * @since    1.0.28
+     * @param    string    $string    String to check
+     * @return   boolean   True if valid JSON
+     */
+    private function is_json($string)
+    {
+        if (!is_string($string)) {
+            return false;
+        }
+        
+        json_decode($string);
+        return (json_last_error() === JSON_ERROR_NONE);
     }
 
     /**
@@ -1638,12 +1646,10 @@ class Themewire_Security_AI_Analyzer
     public function is_ai_available()
     {
         $openai_api_key = get_option('twss_openai_api_key', '');
-        $openai_oauth = get_option('twss_openai_oauth_token', '');
         $gemini_api_key = get_option('twss_gemini_api_key', '');
-        $gemini_oauth = get_option('twss_gemini_oauth_token', '');
         $openrouter_api_key = get_option('twss_openrouter_api_key', '');
 
-        return !empty($openai_api_key) || !empty($openai_oauth) || !empty($gemini_api_key) || !empty($gemini_oauth) || !empty($openrouter_api_key);
+        return !empty($openai_api_key) || !empty($gemini_api_key) || !empty($openrouter_api_key);
     }
 
     /**
@@ -1657,14 +1663,12 @@ class Themewire_Security_AI_Analyzer
         $providers = array();
 
         $openai_api_key = get_option('twss_openai_api_key', '');
-        $openai_oauth = get_option('twss_openai_oauth_token', '');
-        if (!empty($openai_api_key) || !empty($openai_oauth)) {
+        if (!empty($openai_api_key)) {
             $providers[] = 'openai';
         }
 
         $gemini_api_key = get_option('twss_gemini_api_key', '');
-        $gemini_oauth = get_option('twss_gemini_oauth_token', '');
-        if (!empty($gemini_api_key) || !empty($gemini_oauth)) {
+        if (!empty($gemini_api_key)) {
             $providers[] = 'gemini';
         }
 
@@ -1674,62 +1678,5 @@ class Themewire_Security_AI_Analyzer
         }
 
         return $providers;
-    }
-
-    /**
-     * Get OpenAI OAuth authorization URL
-     *
-     * @since    1.0.2
-     * @return   string    Authorization URL
-     */
-    public function get_openai_oauth_url()
-    {
-        $client_id = get_option('twss_openai_client_id', '');
-
-        if (empty($client_id)) {
-            return false; // OAuth not properly configured
-        }
-
-        $redirect_uri = admin_url('admin.php?page=themewire-security-oauth-callback');
-        $state = wp_create_nonce('openai_oauth_state');
-
-        $params = array(
-            'client_id' => $client_id,
-            'redirect_uri' => $redirect_uri,
-            'response_type' => 'code',
-            'scope' => 'api.read',
-            'state' => $state
-        );
-
-        return 'https://platform.openai.com/oauth/authorize?' . http_build_query($params);
-    }
-
-    /**
-     * Get Google OAuth authorization URL for Gemini
-     *
-     * @since    1.0.2
-     * @return   string    Authorization URL
-     */
-    public function get_gemini_oauth_url()
-    {
-        $client_id = get_option('twss_gemini_client_id', '');
-
-        if (empty($client_id)) {
-            return false; // OAuth not properly configured
-        }
-
-        $redirect_uri = admin_url('admin.php?page=themewire-security-oauth-callback');
-        $state = wp_create_nonce('gemini_oauth_state');
-
-        $params = array(
-            'client_id' => $client_id,
-            'redirect_uri' => $redirect_uri,
-            'response_type' => 'code',
-            'scope' => 'https://www.googleapis.com/auth/generative-language',
-            'access_type' => 'offline',
-            'state' => $state
-        );
-
-        return 'https://accounts.google.com/o/oauth2/v2/auth?' . http_build_query($params);
     }
 }

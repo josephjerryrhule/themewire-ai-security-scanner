@@ -9,19 +9,6 @@
  * @package    Themewire_Security
  */
 
-// Handle OAuth callback success/error messages
-if (isset($_GET['oauth_success']) && $_GET['oauth_success'] == '1') {
-    $provider = sanitize_text_field($_GET['provider']);
-    echo '<div class="notice notice-success is-dismissible"><p>' .
-        sprintf(__('Successfully connected to %s!', 'themewire-security'), $provider) .
-        '</p></div>';
-}
-
-if (isset($_GET['oauth_error']) && $_GET['oauth_error'] == '1') {
-    $message = isset($_GET['message']) ? sanitize_text_field($_GET['message']) : __('OAuth authentication failed', 'themewire-security');
-    echo '<div class="notice notice-error is-dismissible"><p>' . $message . '</p></div>';
-}
-
 // Save settings if form is submitted
 if (isset($_POST['twss_settings_submit'])) {
     check_admin_referer('twss_settings_nonce');
@@ -30,8 +17,6 @@ if (isset($_POST['twss_settings_submit'])) {
     update_option('twss_openai_api_key', sanitize_text_field($_POST['twss_openai_api_key']));
     update_option('twss_gemini_api_key', sanitize_text_field($_POST['twss_gemini_api_key']));
     update_option('twss_openrouter_api_key', sanitize_text_field($_POST['twss_openrouter_api_key']));
-    update_option('twss_openai_oauth_token', sanitize_text_field($_POST['twss_openai_oauth_token']));
-    update_option('twss_gemini_oauth_token', sanitize_text_field($_POST['twss_gemini_oauth_token']));
     update_option('twss_use_fallback_ai', isset($_POST['twss_use_fallback_ai']) ? true : false);
     update_option('twss_scheduled_time', sanitize_text_field($_POST['twss_scheduled_time']));
     update_option('twss_auto_fix', isset($_POST['twss_auto_fix']) ? true : false);
@@ -51,8 +36,7 @@ $ai_provider = get_option('twss_ai_provider', 'openai');
 $openai_api_key = get_option('twss_openai_api_key', '');
 $gemini_api_key = get_option('twss_gemini_api_key', '');
 $openrouter_api_key = get_option('twss_openrouter_api_key', '');
-$openai_oauth_token = get_option('twss_openai_oauth_token', '');
-$gemini_oauth_token = get_option('twss_gemini_oauth_token', '');
+$use_fallback_ai = get_option('twss_use_fallback_ai', true);
 $use_fallback_ai = get_option('twss_use_fallback_ai', true);
 $scheduled_time = get_option('twss_scheduled_time', '02:00');
 $auto_fix = get_option('twss_auto_fix', false);
@@ -100,21 +84,6 @@ $remove_data = get_option('twss_remove_data_on_uninstall', false);
                                 <span id="openai-api-status"></span>
                                 <p class="description"><?php _e('Enter your OpenAI API key. Get one at', 'themewire-security'); ?> <a href="https://platform.openai.com/api-keys" target="_blank">https://platform.openai.com/api-keys</a></p>
                             </div>
-
-                            <div class="auth-option">
-                                <h4><?php _e('Option 2: OAuth Login', 'themewire-security'); ?></h4>
-                                <?php if (!empty($openai_oauth_token)): ?>
-                                    <div class="oauth-connected">
-                                        <span class="connected-status">✓ <?php _e('Connected to OpenAI', 'themewire-security'); ?></span>
-                                        <button type="button" id="disconnect-openai-oauth" class="button"><?php _e('Disconnect', 'themewire-security'); ?></button>
-                                    </div>
-                                <?php else: ?>
-                                    <button type="button" id="connect-openai-oauth" class="button button-primary">
-                                        <?php _e('Connect with OpenAI', 'themewire-security'); ?>
-                                    </button>
-                                    <p class="description"><?php _e('Securely connect your OpenAI account without sharing your API key.', 'themewire-security'); ?></p>
-                                <?php endif; ?>
-                            </div>
                         </div>
                     </td>
                 </tr>
@@ -131,21 +100,6 @@ $remove_data = get_option('twss_remove_data_on_uninstall', false);
                                 <button type="button" id="test-gemini-api" class="button"><?php _e('Test API Key', 'themewire-security'); ?></button>
                                 <span id="gemini-api-status"></span>
                                 <p class="description"><?php _e('Enter your Google Gemini API key. Get one at', 'themewire-security'); ?> <a href="https://ai.google.dev/tutorials/setup" target="_blank">https://ai.google.dev/tutorials/setup</a></p>
-                            </div>
-
-                            <div class="auth-option">
-                                <h4><?php _e('Option 2: Google Account', 'themewire-security'); ?></h4>
-                                <?php if (!empty($gemini_oauth_token)): ?>
-                                    <div class="oauth-connected">
-                                        <span class="connected-status">✓ <?php _e('Connected to Google', 'themewire-security'); ?></span>
-                                        <button type="button" id="disconnect-gemini-oauth" class="button"><?php _e('Disconnect', 'themewire-security'); ?></button>
-                                    </div>
-                                <?php else: ?>
-                                    <button type="button" id="connect-gemini-oauth" class="button button-primary">
-                                        <?php _e('Connect with Google', 'themewire-security'); ?>
-                                    </button>
-                                    <p class="description"><?php _e('Connect your Google account to use Gemini AI.', 'themewire-security'); ?></p>
-                                <?php endif; ?>
                             </div>
                         </div>
                     </td>
@@ -289,61 +243,6 @@ $remove_data = get_option('twss_remove_data_on_uninstall', false);
                     $('.openai-settings, .gemini-settings, .openrouter-settings').hide();
                 }
             });
-
-            // OAuth connection handlers
-            $('#connect-openai-oauth').on('click', function() {
-                initiateOAuthFlow('openai');
-            });
-
-            $('#disconnect-openai-oauth').on('click', function() {
-                disconnectOAuth('openai');
-            });
-
-            $('#connect-gemini-oauth').on('click', function() {
-                initiateOAuthFlow('gemini');
-            });
-
-            $('#disconnect-gemini-oauth').on('click', function() {
-                disconnectOAuth('gemini');
-            });
-
-            function initiateOAuthFlow(provider) {
-                // Open OAuth popup
-                var popup = window.open(
-                    twss_data.admin_url + 'admin.php?page=themewire-security-oauth&provider=' + provider,
-                    'oauth_popup',
-                    'width=600,height=600,scrollbars=yes,resizable=yes'
-                );
-
-                // Listen for OAuth completion
-                var checkClosed = setInterval(function() {
-                    if (popup.closed) {
-                        clearInterval(checkClosed);
-                        location.reload(); // Refresh to show connected status
-                    }
-                }, 1000);
-            }
-
-            function disconnectOAuth(provider) {
-                if (confirm('Are you sure you want to disconnect from ' + provider + '?')) {
-                    $.ajax({
-                        url: twss_data.ajax_url,
-                        type: 'POST',
-                        data: {
-                            action: 'twss_disconnect_oauth',
-                            provider: provider,
-                            nonce: twss_data.nonce
-                        },
-                        success: function(response) {
-                            if (response.success) {
-                                location.reload();
-                            } else {
-                                alert('Error disconnecting: ' + response.data.message);
-                            }
-                        }
-                    });
-                }
-            }
         });
     </script>
 </div>

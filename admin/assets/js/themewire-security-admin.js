@@ -97,9 +97,6 @@
     // AI Connection Testing
     setupAIConnectionTesting();
 
-    // OAuth Flow Handlers
-    setupOAuthHandlers();
-
     // Bulk Actions for Scan Results
     setupBulkActions();
 
