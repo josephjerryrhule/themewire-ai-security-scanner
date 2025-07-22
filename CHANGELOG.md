@@ -1,5 +1,36 @@
 # Changelog
 
+## [1.0.13] - 2025-07-22
+
+### Fixed
+- **Plugin Update Critical Error**: Re-enabled GitHub updater with proper error handling to prevent fatal errors during plugin updates
+- **Enhanced File Validation**: Implemented multi-layer validation system to ensure only existing files are scanned, completely eliminating ghost files from scan results
+- **Improved Error Handling**: Added comprehensive logging for file validation process
+
+### Changed
+- **UI Design Overhaul**: Completely redesigned interface with flat, minimal design
+  - Removed all rounded corners (border-radius) for sharp, clean edges
+  - Eliminated all shadows and gradients
+  - Implemented minimal color palette with strong contrast
+  - Flat buttons with clean typography
+  - Grid-based layout with 1px borders
+  - Uppercase labels with proper letter spacing
+
+### Enhanced
+- **File Scanning Logic**: 
+  - Added `realpath()` validation to resolve symlinks
+  - Implemented file size verification (must be > 0 bytes)
+  - Enhanced broken symlink detection
+  - Added duplicate file prevention using resolved paths
+  - Comprehensive error logging for skipped files
+- **UI Components**: Flat design for all elements including forms, tables, progress bars, and notifications
+
+### Technical Improvements
+- **Robust File Detection**: Multiple validation layers prevent ghost files from appearing in scan results
+- **Enhanced Logging**: Detailed logging of file validation process for debugging
+- **Performance**: Optimized file scanning with proper error handling
+- **CSS Architecture**: Complete UI redesign with flat, minimal aesthetic
+
 ## [1.0.12] - 2025-07-16
 
 ### Added

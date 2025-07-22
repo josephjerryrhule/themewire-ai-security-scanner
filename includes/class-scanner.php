@@ -1217,35 +1217,70 @@ class Themewire_Security_Scanner
 
         // Validate directory exists and is readable
         if (!is_dir($dir) || !is_readable($dir)) {
+            error_log("TWSS: Directory not accessible: {$dir}");
             return $result;
         }
 
         try {
             $it = new RecursiveIteratorIterator(
-                new RecursiveDirectoryIterator($dir, RecursiveDirectoryIterator::SKIP_DOTS)
+                new RecursiveDirectoryIterator($dir, RecursiveDirectoryIterator::SKIP_DOTS),
+                RecursiveIteratorIterator::LEAVES_ONLY
             );
 
             foreach ($it as $file) {
-                // Only process actual files with PHP extension that exist and are readable
-                if (
-                    $file->isFile() &&
-                    $file->getExtension() === 'php' &&
-                    file_exists($file->getPathname()) &&
-                    is_readable($file->getPathname())
-                ) {
+                try {
+                    // Skip if not a file
+                    if (!$file->isFile()) {
+                        continue;
+                    }
+
+                    // Skip if not PHP extension
+                    if (strtolower($file->getExtension()) !== 'php') {
+                        continue;
+                    }
 
                     $filepath = $file->getPathname();
+                    $realpath = realpath($filepath);
 
-                    // Additional verification - ensure it's not a broken symlink or ghost file
-                    if (is_file($filepath) && filesize($filepath) !== false) {
-                        $result[] = $filepath;
+                    // Multiple layers of validation to ensure file actually exists
+                    if (
+                        // Basic existence check
+                        file_exists($filepath) &&
+                        // Ensure it's a regular file (not directory or special file)
+                        is_file($filepath) &&
+                        // Check if readable
+                        is_readable($filepath) &&
+                        // Ensure realpath resolves (not a broken symlink)
+                        $realpath !== false &&
+                        // Verify the resolved path also exists
+                        file_exists($realpath) &&
+                        // Ensure file has content (size check)
+                        filesize($filepath) !== false &&
+                        filesize($filepath) > 0 &&
+                        // Final verification - can we actually read the file?
+                        is_readable($realpath)
+                    ) {
+                        // Use realpath to avoid duplicate entries from symlinks
+                        if (!in_array($realpath, $result)) {
+                            $result[] = $realpath;
+                        }
+                    } else {
+                        // Log ghost files that were skipped
+                        error_log("TWSS: Skipped ghost/invalid file: {$filepath}");
                     }
+                } catch (Exception $fileException) {
+                    // Log individual file errors but continue processing
+                    error_log('TWSS: Error processing file ' . $file->getPathname() . ': ' . $fileException->getMessage());
+                    continue;
                 }
             }
         } catch (Exception $e) {
             // Log error but continue - don't let directory access issues break the scan
             error_log('TWSS: Error scanning directory ' . $dir . ': ' . $e->getMessage());
         }
+
+        // Log how many files were found
+        error_log("TWSS: Found " . count($result) . " valid PHP files in {$dir}");
 
         return $result;
     }

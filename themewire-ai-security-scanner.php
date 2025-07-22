@@ -13,8 +13,8 @@
  * Domain Path: /languages
  * Requires PHP: 7.4
  * Requires at least: 5.6
- * Build Date: 2025-07-16
- * Last Modified: 2025-07-16 12:00:00
+ * Build Date: 2025-07-22
+ * Last Modified: 2025-07-22 15:00:00
  * Modified By: Themewire LTD
  */
 
@@ -63,17 +63,23 @@ register_deactivation_hook(__FILE__, 'deactivate_themewire_security_scanner');
 /**
  * Initialize GitHub updater.
  */
-// Temporarily disabled to prevent fatal error
-// require_once TWSS_PLUGIN_DIR . 'includes/class-github-updater.php';
+if (is_admin()) {
+    try {
+        require_once TWSS_PLUGIN_DIR . 'includes/class-github-updater.php';
 
-// Only initialize GitHub updater in admin area
-// if (is_admin()) {
-//     $updater = new Themewire_Security_GitHub_Updater(
-//         __FILE__,
-//         TWSS_GITHUB_USERNAME . '/' . TWSS_GITHUB_REPO,
-//         TWSS_VERSION
-//     );
-// }
+        // Only initialize if the class exists and we're in admin
+        if (class_exists('Themewire_Security_GitHub_Updater')) {
+            $updater = new Themewire_Security_GitHub_Updater(
+                __FILE__,
+                TWSS_GITHUB_USERNAME . '/' . TWSS_GITHUB_REPO,
+                TWSS_VERSION
+            );
+        }
+    } catch (Exception $e) {
+        // Fail silently for updater issues - don't break the plugin
+        error_log('Themewire Security GitHub Updater error: ' . $e->getMessage());
+    }
+}
 
 /**
  * The core plugin class that is used to define internationalization,

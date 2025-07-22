@@ -1,101 +1,398 @@
 /**
- * Admin styles for Themewire AI Security Scanner
+ * Admin styles for Themewire AI Security Scanner - Flat Minimal Design
  *
  * @link       https://themewire.com
- * @since      1.0.0
+ * @since      1.0.12
  *
  * @package    Themewire_Security
  */
 
+/* Reset and Base Styles */
 .themewire-security-wrap {
   max-width: 100%;
   background-color: #ffffff;
-  color: #000000;
+  color: #333333;
+  font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+  line-height: 1.4;
 }
 
+.themewire-security-wrap * {
+  box-sizing: border-box;
+}
+
+/* Header */
 .themewire-security-wrap .header-actions {
-  display: inherit;
+  display: flex;
   justify-content: space-between;
   align-items: center;
-  margin-bottom: 20px;
+  margin-bottom: 30px;
+  padding-bottom: 20px;
+  border-bottom: 1px solid #e1e1e1;
 }
 
+/* Cards - Flat Design */
 .themewire-security-wrap .card {
-  background: #fbf6f0;
-  border: 1px solid #ff7342;
-  box-shadow: 0 1px 3px rgba(255, 115, 66, 0.1);
-  padding: 15px 20px;
+  background: #ffffff;
+  border: 1px solid #e1e1e1;
+  padding: 20px;
   margin-top: 20px;
-  border-radius: 8px;
   max-width: 100%;
   width: 100%;
+  /* Completely flat - no border-radius, no shadows */
 }
 
 .themewire-security-wrap .card-title {
-  margin-top: 0;
-  padding-bottom: 12px;
-  border-bottom: 1px solid #ff7342;
-  color: #000000;
+  margin: 0 0 20px 0;
+  padding-bottom: 15px;
+  border-bottom: 2px solid #333333;
+  color: #333333;
+  font-size: 18px;
+  font-weight: 600;
 }
 
+/* Stat Grid - Flat Minimal */
 .themewire-security-wrap .stat-grid {
   display: grid;
   grid-template-columns: repeat(auto-fill, minmax(200px, 1fr));
-  gap: 15px;
-  margin-bottom: 20px;
+  gap: 1px;
+  margin-bottom: 30px;
+  background: #e1e1e1;
 }
 
 .themewire-security-wrap .stat-card {
-  padding: 15px;
+  padding: 20px;
   background-color: #ffffff;
-  border-radius: 8px;
-  border-left: 4px solid #ff7342;
-  box-shadow: 0 2px 4px rgba(255, 115, 66, 0.1);
+  border-left: 4px solid #333333;
+  /* No border-radius, no shadows */
 }
 
 .themewire-security-wrap .stat-card.high-severity {
-  border-left: 4px solid #d63638;
+  border-left: 4px solid #dc2626;
 }
 
 .themewire-security-wrap .stat-card.medium-severity {
-  border-left: 4px solid #dba617;
+  border-left: 4px solid #ea580c;
 }
 
 .themewire-security-wrap .stat-card.low-severity {
-  border-left: 4px solid #ff7342;
+  border-left: 4px solid #0891b2;
 }
 
 .themewire-security-wrap .stat-label {
-  font-size: 14px;
-  color: #000000;
+  font-size: 12px;
+  color: #666666;
   margin-bottom: 8px;
-  opacity: 0.8;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+  font-weight: 500;
 }
 
 .themewire-security-wrap .stat-number {
-  font-size: 24px;
-  font-weight: 600;
-  color: #000000;
+  font-size: 28px;
+  font-weight: 700;
+  color: #333333;
+  line-height: 1;
 }
 
+/* Severity Colors */
 .themewire-security-wrap .severity-high {
-  color: #d63638;
-  font-weight: bold;
+  color: #dc2626;
+  font-weight: 600;
 }
 
 .themewire-security-wrap .severity-medium {
-  color: #dba617;
-  font-weight: bold;
+  color: #ea580c;
+  font-weight: 600;
 }
 
 .themewire-security-wrap .severity-low {
-  color: #ff7342;
+  color: #0891b2;
+  font-weight: 600;
 }
 
+/* Action Buttons - Flat Minimal */
 .themewire-security-wrap .action-buttons {
   display: flex;
   flex-wrap: wrap;
-  gap: 5px;
+  gap: 1px;
+  margin-bottom: 20px;
+}
+
+/* Primary Buttons - Flat Design */
+.themewire-security-wrap .btn-primary,
+.themewire-security-wrap .button-primary {
+  background: #333333;
+  color: #ffffff;
+  border: none;
+  padding: 12px 24px;
+  font-size: 14px;
+  font-weight: 500;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+  cursor: pointer;
+  transition: background-color 0.2s ease;
+  text-decoration: none;
+  display: inline-block;
+  /* No border-radius for flat design */
+}
+
+.themewire-security-wrap .btn-primary:hover,
+.themewire-security-wrap .button-primary:hover {
+  background: #000000;
+  color: #ffffff;
+}
+
+.themewire-security-wrap .btn-primary:disabled,
+.themewire-security-wrap .button-primary:disabled {
+  background: #cccccc;
+  color: #666666;
+  cursor: not-allowed;
+}
+
+/* Secondary Buttons */
+.themewire-security-wrap .btn-secondary,
+.themewire-security-wrap .button-secondary {
+  background: #ffffff;
+  color: #333333;
+  border: 1px solid #333333;
+  padding: 12px 24px;
+  font-size: 14px;
+  font-weight: 500;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+  cursor: pointer;
+  transition: all 0.2s ease;
+  text-decoration: none;
+  display: inline-block;
+}
+
+.themewire-security-wrap .btn-secondary:hover,
+.themewire-security-wrap .button-secondary:hover {
+  background: #333333;
+  color: #ffffff;
+}
+
+/* Danger/Delete Buttons */
+.themewire-security-wrap .btn-danger,
+.themewire-security-wrap .button-danger {
+  background: #dc2626;
+  color: #ffffff;
+  border: none;
+  padding: 12px 24px;
+  font-size: 14px;
+  font-weight: 500;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+  cursor: pointer;
+  transition: background-color 0.2s ease;
+  text-decoration: none;
+  display: inline-block;
+}
+
+.themewire-security-wrap .btn-danger:hover,
+.themewire-security-wrap .button-danger:hover {
+  background: #b91c1c;
+  color: #ffffff;
+}
+
+/* Small Buttons */
+.themewire-security-wrap .btn-small {
+  padding: 8px 16px;
+  font-size: 12px;
+}
+
+/* Button Groups */
+.themewire-security-wrap .button-group {
+  display: inline-flex;
+  background: #e1e1e1;
+}
+
+.themewire-security-wrap .button-group .btn-primary,
+.themewire-security-wrap .button-group .btn-secondary {
+  margin: 0;
+  border: none;
+}
+
+/* Form Elements - Flat Design */
+.themewire-security-wrap input[type="text"],
+.themewire-security-wrap input[type="email"],
+.themewire-security-wrap input[type="password"],
+.themewire-security-wrap textarea,
+.themewire-security-wrap select {
+  border: 1px solid #e1e1e1;
+  padding: 12px;
+  font-size: 14px;
+  background: #ffffff;
+  color: #333333;
+  width: 100%;
+  /* No border-radius for flat design */
+  outline: none;
+  transition: border-color 0.2s ease;
+}
+
+.themewire-security-wrap input[type="text"]:focus,
+.themewire-security-wrap input[type="email"]:focus,
+.themewire-security-wrap input[type="password"]:focus,
+.themewire-security-wrap textarea:focus,
+.themewire-security-wrap select:focus {
+  border-color: #333333;
+}
+
+/* Progress Bar - Flat Design */
+.themewire-security-wrap .progress-bar {
+  width: 100%;
+  height: 4px;
+  background: #e1e1e1;
+  margin: 10px 0;
+  overflow: hidden;
+}
+
+.themewire-security-wrap .progress-bar-fill {
+  height: 100%;
+  background: #333333;
+  transition: width 0.3s ease;
+}
+
+.themewire-security-wrap .progress-bar-fill.success {
+  background: #16a34a;
+}
+
+.themewire-security-wrap .progress-bar-fill.warning {
+  background: #ea580c;
+}
+
+.themewire-security-wrap .progress-bar-fill.error {
+  background: #dc2626;
+}
+
+/* Tables - Flat Design */
+.themewire-security-wrap table {
+  width: 100%;
+  border-collapse: collapse;
+  border: 1px solid #e1e1e1;
+  background: #ffffff;
+}
+
+.themewire-security-wrap table th,
+.themewire-security-wrap table td {
+  padding: 12px;
+  text-align: left;
+  border-bottom: 1px solid #e1e1e1;
+  font-size: 14px;
+}
+
+.themewire-security-wrap table th {
+  background: #f8f9fa;
+  font-weight: 600;
+  color: #333333;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+  font-size: 12px;
+}
+
+.themewire-security-wrap table tr:hover {
+  background: #f8f9fa;
+}
+
+/* Notices - Flat Design */
+.themewire-security-wrap .notice {
+  padding: 15px 20px;
+  margin: 20px 0;
+  border-left: 4px solid #333333;
+  background: #f8f9fa;
+  color: #333333;
+}
+
+.themewire-security-wrap .notice.notice-success {
+  border-left-color: #16a34a;
+  background: #f0fdf4;
+  color: #166534;
+}
+
+.themewire-security-wrap .notice.notice-warning {
+  border-left-color: #ea580c;
+  background: #fff7ed;
+  color: #c2410c;
+}
+
+.themewire-security-wrap .notice.notice-error {
+  border-left-color: #dc2626;
+  background: #fef2f2;
+  color: #dc2626;
+}
+
+/* Tabs - Flat Design */
+.themewire-security-wrap .nav-tab-wrapper {
+  border-bottom: 2px solid #e1e1e1;
+  margin-bottom: 20px;
+}
+
+.themewire-security-wrap .nav-tab {
+  background: transparent;
+  border: none;
+  padding: 12px 24px;
+  color: #666666;
+  text-decoration: none;
+  font-weight: 500;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+  font-size: 12px;
+  border-bottom: 2px solid transparent;
+  transition: all 0.2s ease;
+}
+
+.themewire-security-wrap .nav-tab:hover,
+.themewire-security-wrap .nav-tab-active {
+  color: #333333;
+  border-bottom-color: #333333;
+}
+
+/* Loading States - Minimal */
+.themewire-security-wrap .loading-spinner {
+  display: inline-block;
+  width: 16px;
+  height: 16px;
+  border: 2px solid #e1e1e1;
+  border-top: 2px solid #333333;
+  animation: spin 1s linear infinite;
+}
+
+@keyframes spin {
+  0% {
+    transform: rotate(0deg);
+  }
+  100% {
+    transform: rotate(360deg);
+  }
+}
+
+/* Global Flat Design Override - Remove all rounded corners */
+.themewire-security-wrap *,
+.themewire-security-wrap *:before,
+.themewire-security-wrap *:after {
+  border-radius: 0 !important;
+}
+
+/* Override WordPress admin button styles to be flat */
+.themewire-security-wrap .button,
+.themewire-security-wrap .btn,
+.themewire-security-wrap input[type="button"],
+.themewire-security-wrap input[type="submit"] {
+  border-radius: 0 !important;
+  box-shadow: none !important;
+  text-shadow: none !important;
+}
+
+/* Remove all box shadows for completely flat design */
+.themewire-security-wrap * {
+  box-shadow: none !important;
+  text-shadow: none !important;
+}
+
+/* Ensure icons are still circular if needed (like loading spinners) */
+.themewire-security-wrap .loading-spinner,
+.themewire-security-wrap .spinner {
+  border-radius: 50% !important;
 }
 
 .themewire-security-wrap .settings-form .card {
