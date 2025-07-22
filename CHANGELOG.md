@@ -1,5 +1,15 @@
 # Changelog
 
+## [1.0.20] - 2025-07-22
+
+### Fixed
+- **JavaScript Error**: Fixed "Uncaught ReferenceError: performIssueAction is not defined" error
+  - Added missing `performIssueAction()` function to handle issue actions (fix, quarantine, whitelist, delete, restore)
+  - Function includes proper error handling, loading states, and user feedback
+  - Supports various issue actions with customizable loading text and extra data parameters
+  - Integrates with existing AJAX endpoints for issue management
+  - Provides smooth UI updates by removing completed issue rows from the table
+
 ## [1.0.19] - 2025-07-22
 
 ### Fixed

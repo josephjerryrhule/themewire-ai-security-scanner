@@ -2533,6 +2533,75 @@
   }
 
   /**
+   * Perform an action on a specific issue
+   *
+   * @param {jQuery} button - The button that was clicked
+   * @param {string} action - The AJAX action to perform
+   * @param {number} issueId - The issue ID to act on
+   * @param {string} loadingText - Text to show while processing
+   * @param {string} originalText - Original button text to restore
+   * @param {object} extraData - Additional data to send with the request
+   */
+  function performIssueAction(button, action, issueId, loadingText, originalText, extraData) {
+    if (!issueId) {
+      alert("Invalid issue ID");
+      return;
+    }
+
+    // Disable button and show loading state
+    button.prop("disabled", true);
+    var buttonOriginalText = originalText || button.text();
+    button.text(loadingText || "Processing...");
+
+    // Prepare AJAX data
+    var ajaxData = {
+      action: action,
+      issue_id: issueId,
+      nonce: twss_data.nonce
+    };
+
+    // Add any extra data
+    if (extraData && typeof extraData === 'object') {
+      $.extend(ajaxData, extraData);
+    }
+
+    // Perform action via AJAX
+    $.ajax({
+      url: twss_data.ajax_url,
+      type: "POST",
+      data: ajaxData,
+      success: function (response) {
+        if (response.success) {
+          // Show success message
+          alert(response.data.message || "Action completed successfully!");
+          
+          // Remove the issue row from the table if action was successful
+          var issueRow = button.closest('tr');
+          if (issueRow.length) {
+            issueRow.fadeOut(300, function() {
+              $(this).remove();
+            });
+          } else {
+            // Reload the page to show updated state if no specific row to remove
+            location.reload();
+          }
+        } else {
+          alert("Error: " + (response.data.message || "Action failed"));
+        }
+      },
+      error: function(xhr, status, error) {
+        console.error('AJAX Error:', status, error);
+        alert("Error performing action. Please try again.");
+      },
+      complete: function () {
+        // Re-enable button and restore original text
+        button.prop("disabled", false);
+        button.text(buttonOriginalText);
+      }
+    });
+  }
+
+  /**
    * Perform AI analysis on a specific issue
    *
    * @param {jQuery} button - The button that was clicked

@@ -197,14 +197,14 @@ class Themewire_Security_Database
         // Skip validation only for specific issue types that are about missing files
         $skip_existence_validation = in_array($issue_type, [
             'core_file_missing',
-            'plugin_file_missing', 
+            'plugin_file_missing',
             'theme_file_missing'
         ]);
 
         if (!$skip_existence_validation) {
             // Multiple layers of validation to ensure file actually exists
             $realpath = realpath($file_path);
-            
+
             if (
                 // Basic existence check
                 !file_exists($file_path) ||
@@ -224,7 +224,7 @@ class Themewire_Security_Database
                 error_log("TWSS: Skipped adding issue for non-existent/invalid file: {$file_path} (Type: {$issue_type})");
                 return false;
             }
-            
+
             // Use realpath for consistent file path storage
             $file_path = $realpath;
         }
@@ -630,7 +630,7 @@ class Themewire_Security_Database
         global $wpdb;
 
         $table_issues = $wpdb->prefix . 'twss_issues';
-        
+
         // Get all issues that are not about missing files
         $issues = $wpdb->get_results($wpdb->prepare(
             "SELECT id, file_path, issue_type FROM {$table_issues} 
@@ -644,7 +644,7 @@ class Themewire_Security_Database
         foreach ($issues as $issue) {
             $file_path = $issue['file_path'];
             $realpath = realpath($file_path);
-            
+
             // Check if file exists and is valid
             if (
                 !file_exists($file_path) ||
