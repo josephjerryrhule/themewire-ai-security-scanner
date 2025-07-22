@@ -631,25 +631,27 @@ class Themewire_Security_Scanner
             return true;
         } catch (Exception $e) {
             $error_message = $e->getMessage();
-            
+
             // Handle AI service quota/rate limiting gracefully
-            if (strpos($error_message, 'quota') !== false || 
-                strpos($error_message, 'rate limited') !== false || 
-                strpos($error_message, 'temporarily unavailable') !== false) {
-                
+            if (
+                strpos($error_message, 'quota') !== false ||
+                strpos($error_message, 'rate limited') !== false ||
+                strpos($error_message, 'temporarily unavailable') !== false
+            ) {
+
                 if ($this->logger) {
                     $this->logger->info('AI analysis unavailable for file, using pattern detection: ' . $file_path, array(
                         'reason' => 'API quota/rate limit',
                         'fallback' => 'pattern-based analysis'
                     ));
                 }
-                
+
                 // Try pattern-based analysis as fallback
                 try {
                     // Get file content and extension for fallback analysis
                     $file_content = file_get_contents($file_path);
                     $file_extension = pathinfo($file_path, PATHINFO_EXTENSION);
-                    
+
                     $pattern_result = $this->ai_analyzer->analyze_with_fallback($file_path, $file_content, $file_extension);
                     if ($pattern_result && isset($pattern_result['is_malware']) && $pattern_result['is_malware']) {
                         // Record issue with pattern-based detection
@@ -679,7 +681,7 @@ class Themewire_Security_Scanner
                     return false;
                 }
             }
-            
+
             // Handle other errors
             if ($this->logger) {
                 $this->logger->error('Error scanning file: ' . $file_path, array('error' => $error_message));
@@ -1705,18 +1707,20 @@ class Themewire_Security_Scanner
                     }
                 } catch (Exception $e) {
                     $error_message = $e->getMessage();
-                    
+
                     // Handle API quota/rate limiting
-                    if (strpos($error_message, 'quota') !== false || 
-                        strpos($error_message, 'rate limited') !== false || 
-                        strpos($error_message, 'temporarily unavailable') !== false) {
-                        
+                    if (
+                        strpos($error_message, 'quota') !== false ||
+                        strpos($error_message, 'rate limited') !== false ||
+                        strpos($error_message, 'temporarily unavailable') !== false
+                    ) {
+
                         if ($this->logger) {
                             $this->logger->info('AI analysis unavailable for review, keeping original detection: ' . $file, array(
                                 'reason' => 'API quota/rate limit'
                             ));
                         }
-                        
+
                         // Keep the original detection without AI confirmation
                         $this->database->update_issue_status(
                             $scan_id,
@@ -1729,7 +1733,7 @@ class Themewire_Security_Scanner
                         if ($this->logger) {
                             $this->logger->error('Error during AI file review: ' . $file, array('error' => $error_message));
                         }
-                        
+
                         $this->database->update_issue_status(
                             $scan_id,
                             $file,

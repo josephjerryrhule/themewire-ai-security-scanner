@@ -29,6 +29,7 @@ if (isset($_POST['twss_settings_submit'])) {
     update_option('twss_ai_provider', sanitize_text_field($_POST['twss_ai_provider']));
     update_option('twss_openai_api_key', sanitize_text_field($_POST['twss_openai_api_key']));
     update_option('twss_gemini_api_key', sanitize_text_field($_POST['twss_gemini_api_key']));
+    update_option('twss_openrouter_api_key', sanitize_text_field($_POST['twss_openrouter_api_key']));
     update_option('twss_openai_oauth_token', sanitize_text_field($_POST['twss_openai_oauth_token']));
     update_option('twss_gemini_oauth_token', sanitize_text_field($_POST['twss_gemini_oauth_token']));
     update_option('twss_use_fallback_ai', isset($_POST['twss_use_fallback_ai']) ? true : false);
@@ -49,6 +50,7 @@ if (isset($_POST['twss_settings_submit'])) {
 $ai_provider = get_option('twss_ai_provider', 'openai');
 $openai_api_key = get_option('twss_openai_api_key', '');
 $gemini_api_key = get_option('twss_gemini_api_key', '');
+$openrouter_api_key = get_option('twss_openrouter_api_key', '');
 $openai_oauth_token = get_option('twss_openai_oauth_token', '');
 $gemini_oauth_token = get_option('twss_gemini_oauth_token', '');
 $use_fallback_ai = get_option('twss_use_fallback_ai', true);
@@ -78,6 +80,7 @@ $remove_data = get_option('twss_remove_data_on_uninstall', false);
                         <select name="twss_ai_provider" id="twss_ai_provider">
                             <option value="openai" <?php selected($ai_provider, 'openai'); ?>><?php _e('OpenAI (ChatGPT)', 'themewire-security'); ?></option>
                             <option value="gemini" <?php selected($ai_provider, 'gemini'); ?>><?php _e('Google Gemini', 'themewire-security'); ?></option>
+                            <option value="openrouter" <?php selected($ai_provider, 'openrouter'); ?>><?php _e('OpenRouter (Multi-Model)', 'themewire-security'); ?></option>
                             <option value="fallback" <?php selected($ai_provider, 'fallback'); ?>><?php _e('Built-in Analysis Only', 'themewire-security'); ?></option>
                         </select>
                         <p class="description"><?php _e('Select your preferred AI provider for malware analysis.', 'themewire-security'); ?></p>
@@ -143,6 +146,24 @@ $remove_data = get_option('twss_remove_data_on_uninstall', false);
                                     </button>
                                     <p class="description"><?php _e('Connect your Google account to use Gemini AI.', 'themewire-security'); ?></p>
                                 <?php endif; ?>
+                            </div>
+                        </div>
+                    </td>
+                </tr>
+
+                <tr class="openrouter-settings" <?php echo $ai_provider !== 'openrouter' ? 'style="display:none;"' : ''; ?>>
+                    <th scope="row">
+                        <label><?php _e('OpenRouter Authentication', 'themewire-security'); ?></label>
+                    </th>
+                    <td>
+                        <div class="auth-section">
+                            <div class="auth-method active">
+                                <h4><?php _e('API Key', 'themewire-security'); ?></h4>
+                                <input type="text" name="twss_openrouter_api_key" id="twss_openrouter_api_key" value="<?php echo esc_attr($openrouter_api_key); ?>" class="regular-text" placeholder="sk-or-..." />
+                                <button type="button" id="test-openrouter-api" class="button"><?php _e('Test API Key', 'themewire-security'); ?></button>
+                                <br />
+                                <p class="description"><?php _e('Enter your OpenRouter API key. Get one at', 'themewire-security'); ?> <a href="https://openrouter.ai/keys" target="_blank">https://openrouter.ai/keys</a></p>
+                                <p class="description"><?php _e('OpenRouter provides access to multiple AI models including Claude, GPT-4, Llama, and more.', 'themewire-security'); ?></p>
                             </div>
                         </div>
                     </td>
@@ -254,11 +275,17 @@ $remove_data = get_option('twss_remove_data_on_uninstall', false);
                 if (provider === 'openai') {
                     $('.openai-settings').show();
                     $('.gemini-settings').hide();
+                    $('.openrouter-settings').hide();
                 } else if (provider === 'gemini') {
                     $('.openai-settings').hide();
                     $('.gemini-settings').show();
+                    $('.openrouter-settings').hide();
+                } else if (provider === 'openrouter') {
+                    $('.openai-settings').hide();
+                    $('.gemini-settings').hide();
+                    $('.openrouter-settings').show();
                 } else {
-                    $('.openai-settings, .gemini-settings').hide();
+                    $('.openai-settings, .gemini-settings, .openrouter-settings').hide();
                 }
             });
 

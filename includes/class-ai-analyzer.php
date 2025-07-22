@@ -31,6 +31,15 @@ class Themewire_Security_AI_Analyzer
     private $gemini_client = null;
 
     /**
+     * OpenRouter API client.
+     *
+     * @since    1.0.27
+     * @access   private
+     * @var      object    $openrouter_client
+     */
+    private $openrouter_client = null;
+
+    /**
      * Files queued for AI analysis.
      *
      * @since    1.0.0
@@ -70,6 +79,12 @@ class Themewire_Security_AI_Analyzer
             if (!empty($api_key)) {
                 // Initialize Gemini client
                 $this->init_gemini_client($api_key);
+            }
+        } else if ($ai_provider === 'openrouter') {
+            $api_key = get_option('twss_openrouter_api_key', '');
+            if (!empty($api_key)) {
+                // Initialize OpenRouter client
+                $this->init_openrouter_client($api_key);
             }
         }
 
@@ -130,6 +145,19 @@ class Themewire_Security_AI_Analyzer
         // Simple implementation - in production you might use a proper SDK
         $this->gemini_client = new stdClass();
         $this->gemini_client->api_key = $api_key;
+    }
+
+    /**
+     * Initialize OpenRouter API client
+     *
+     * @since    1.0.27
+     * @param    string    $api_key    OpenRouter API key
+     */
+    private function init_openrouter_client($api_key)
+    {
+        // Initialize OpenRouter client
+        $this->openrouter_client = new stdClass();
+        $this->openrouter_client->api_key = $api_key;
     }
 
     /**
@@ -232,6 +260,8 @@ class Themewire_Security_AI_Analyzer
             return $this->analyze_with_openai($file_path, $file_content, $file_extension);
         } else if ($ai_provider === 'gemini' && $this->gemini_client) {
             return $this->analyze_with_gemini($file_path, $file_content, $file_extension);
+        } else if ($ai_provider === 'openrouter' && $this->openrouter_client) {
+            return $this->analyze_with_openrouter($file_path, $file_content, $file_extension);
         } else {
             // Fallback to simple analysis
             return $this->analyze_with_fallback($file_path, $file_content, $file_extension);
@@ -276,6 +306,29 @@ class Themewire_Security_AI_Analyzer
             $prompt = $this->build_analysis_prompt($file_path, $file_content, $file_extension);
 
             $result = $this->send_gemini_request($prompt);
+
+            return $this->parse_ai_response($result);
+        } catch (Exception $e) {
+            // In case of API failure, fall back to simple analysis
+            return $this->analyze_with_fallback($file_path, $file_content, $file_extension);
+        }
+    }
+
+    /**
+     * Analyze file with OpenRouter
+     *
+     * @since    1.0.27
+     * @param    string    $file_path       File path
+     * @param    string    $file_content    File content
+     * @param    string    $file_extension  File extension
+     * @return   array     Analysis result
+     */
+    private function analyze_with_openrouter($file_path, $file_content, $file_extension)
+    {
+        try {
+            $prompt = $this->build_analysis_prompt($file_path, $file_content, $file_extension);
+
+            $result = $this->send_openrouter_request($prompt);
 
             return $this->parse_ai_response($result);
         } catch (Exception $e) {
@@ -1043,29 +1096,115 @@ class Themewire_Security_AI_Analyzer
                 $error_code = isset($error['code']) ? $error['code'] : 0;
                 $error_message = isset($error['message']) ? $error['message'] : 'Unknown API error';
                 $error_status = isset($error['status']) ? $error['status'] : 'UNKNOWN';
-                
+
                 // Handle quota exhausted error (429)
                 if ($error_code === 429 || $error_status === 'RESOURCE_EXHAUSTED') {
                     // Log sanitized error for admin
                     error_log('Gemini API Quota Exhausted - Falling back to pattern-based analysis');
-                    
+
                     // Return user-friendly error message
                     throw new Exception('AI analysis temporarily unavailable due to quota limits. Using pattern-based analysis instead.');
                 }
-                
+
                 // Handle rate limiting
                 if ($error_code === 429) {
                     error_log('Gemini API Rate Limited - Retrying with pattern analysis');
                     throw new Exception('AI service rate limited. Falling back to pattern analysis.');
                 }
-                
+
                 // Handle other API errors with sanitized messages
                 error_log("Gemini API Error [{$error_code}]: {$error_message}");
                 throw new Exception("AI analysis service error. Using pattern-based detection instead.");
             }
-            
+
             // Log raw response for debugging (but sanitize in production)
             error_log('Gemini API: Invalid response structure received');
+            throw new Exception('AI service returned invalid response. Using fallback analysis.');
+        }
+    }
+
+    /**
+     * Send request to OpenRouter API
+     *
+     * @since    1.0.27
+     * @param    string    $prompt    The prompt for the AI
+     * @return   string    The AI response
+     */
+    private function send_openrouter_request($prompt)
+    {
+        $api_key = $this->openrouter_client->api_key;
+        $url = 'https://openrouter.ai/api/v1/chat/completions';
+
+        $headers = array(
+            'Content-Type: application/json',
+            'Authorization: Bearer ' . $api_key,
+            'HTTP-Referer: https://yourdomain.com', // Replace with your actual domain
+            'X-Title: WordPress Security Scanner'
+        );
+
+        $data = array(
+            'model' => 'meta-llama/llama-3.1-8b-instruct:free', // Using a free model, can be configured
+            'messages' => array(
+                array(
+                    'role' => 'system',
+                    'content' => 'You are a cybersecurity expert specialized in WordPress security and malware analysis.'
+                ),
+                array(
+                    'role' => 'user',
+                    'content' => $prompt
+                )
+            ),
+            'temperature' => 0.2,
+            'max_tokens' => 500
+        );
+
+        $curl = curl_init($url);
+        curl_setopt($curl, CURLOPT_RETURNTRANSFER, true);
+        curl_setopt($curl, CURLOPT_POST, true);
+        curl_setopt($curl, CURLOPT_POSTFIELDS, json_encode($data));
+        curl_setopt($curl, CURLOPT_HTTPHEADER, $headers);
+        curl_setopt($curl, CURLOPT_TIMEOUT, 15);
+
+        $response = curl_exec($curl);
+        $err = curl_error($curl);
+
+        curl_close($curl);
+
+        if ($err) {
+            throw new Exception('API request error: ' . $err);
+        }
+
+        $response_data = json_decode($response, true);
+
+        if (isset($response_data['choices'][0]['message']['content'])) {
+            return $response_data['choices'][0]['message']['content'];
+        } else {
+            // Handle specific API errors
+            if (isset($response_data['error'])) {
+                $error = $response_data['error'];
+                $error_code = isset($error['code']) ? $error['code'] : 0;
+                $error_message = isset($error['message']) ? $error['message'] : 'Unknown API error';
+                $error_type = isset($error['type']) ? $error['type'] : 'UNKNOWN';
+                
+                // Handle quota/credit exhausted errors
+                if ($error_code === 429 || strpos($error_message, 'quota') !== false || strpos($error_message, 'credit') !== false) {
+                    error_log('OpenRouter API Quota/Credits Exhausted - Falling back to pattern-based analysis');
+                    throw new Exception('AI analysis temporarily unavailable due to quota limits. Using pattern-based analysis instead.');
+                }
+                
+                // Handle rate limiting
+                if ($error_code === 429) {
+                    error_log('OpenRouter API Rate Limited - Retrying with pattern analysis');
+                    throw new Exception('AI service rate limited. Falling back to pattern analysis.');
+                }
+                
+                // Handle other API errors with sanitized messages
+                error_log("OpenRouter API Error [{$error_code}]: {$error_message}");
+                throw new Exception("AI analysis service error. Using pattern-based detection instead.");
+            }
+            
+            // Log for debugging
+            error_log('OpenRouter API: Invalid response structure received');
             throw new Exception('AI service returned invalid response. Using fallback analysis.');
         }
     }
@@ -1428,8 +1567,9 @@ class Themewire_Security_AI_Analyzer
         $openai_oauth = get_option('twss_openai_oauth_token', '');
         $gemini_api_key = get_option('twss_gemini_api_key', '');
         $gemini_oauth = get_option('twss_gemini_oauth_token', '');
+        $openrouter_api_key = get_option('twss_openrouter_api_key', '');
 
-        return !empty($openai_api_key) || !empty($openai_oauth) || !empty($gemini_api_key) || !empty($gemini_oauth);
+        return !empty($openai_api_key) || !empty($openai_oauth) || !empty($gemini_api_key) || !empty($gemini_oauth) || !empty($openrouter_api_key);
     }
 
     /**
@@ -1452,6 +1592,11 @@ class Themewire_Security_AI_Analyzer
         $gemini_oauth = get_option('twss_gemini_oauth_token', '');
         if (!empty($gemini_api_key) || !empty($gemini_oauth)) {
             $providers[] = 'gemini';
+        }
+
+        $openrouter_api_key = get_option('twss_openrouter_api_key', '');
+        if (!empty($openrouter_api_key)) {
+            $providers[] = 'openrouter';
         }
 
         return $providers;

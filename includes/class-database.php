@@ -268,11 +268,11 @@ class Themewire_Security_Database
     {
         // Call the existing add_issue method with parameters in correct order
         $issue_id = $this->add_issue($scan_id, $issue_type, $file_path, $description, $severity);
-        
+
         if ($issue_id && $suggested_fix) {
             $this->add_suggested_fix($scan_id, $file_path, $suggested_fix);
         }
-        
+
         // Store metadata in ai_analysis field if provided
         if ($issue_id && $metadata) {
             global $wpdb;
@@ -285,7 +285,7 @@ class Themewire_Security_Database
                 array('%d')
             );
         }
-        
+
         return $issue_id;
     }
 
