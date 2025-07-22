@@ -295,63 +295,589 @@ class Themewire_Security_AI_Analyzer
      */
     private function analyze_with_fallback($file_path, $file_content, $file_extension)
     {
-        $suspicious_patterns = array(
-            // PHP patterns
-            'eval(' => 'Found eval() function that can execute arbitrary code',
-            'base64_decode(' => 'Found base64_decode() which is often used to hide malicious code',
-            'system(' => 'Found system() function that can execute system commands',
-            'exec(' => 'Found exec() function that can execute system commands',
-            'passthru(' => 'Found passthru() function that can execute system commands',
-            'shell_exec(' => 'Found shell_exec() function that can execute system commands',
-            'assert(' => 'Found assert() function that can be used for code execution',
-            'preg_replace' => 'Found preg_replace() which can execute code with /e modifier',
-            'create_function(' => 'Found create_function() which can execute arbitrary code',
-            'include($_' => 'Found dynamic include based on user input',
-            'require($_' => 'Found dynamic require based on user input',
-            'include_once($_' => 'Found dynamic include_once based on user input',
-            'require_once($_' => 'Found dynamic require_once based on user input',
-            '$_REQUEST' => 'Found direct usage of $_REQUEST superglobal',
-            '$_GET' => 'Found direct usage of $_GET superglobal',
-            '$_POST' => 'Found direct usage of $_POST superglobal',
-
-            // JavaScript patterns
-            'eval(' => 'Found eval() function that can execute arbitrary code',
-            'document.write(' => 'Found document.write() which can be used in XSS attacks',
-            'fromCharCode(' => 'Found String.fromCharCode() which can be used to obfuscate strings',
-            'unescape(' => 'Found unescape() function which can be used to obfuscate code',
+        $analysis_result = $this->perform_comprehensive_malware_analysis($file_path, $file_content, $file_extension);
+        
+        return array(
+            'is_malware' => $analysis_result['is_malicious'],
+            'explanation' => $analysis_result['explanation'],
+            'suggested_fix' => $analysis_result['suggested_action'],
+            'confidence' => $analysis_result['confidence'],
+            'indicators' => $analysis_result['indicators']
         );
+    }
 
-        $is_malware = false;
+    /**
+     * Perform comprehensive malware analysis using expert patterns
+     *
+     * @since    1.0.24
+     * @param    string    $file_path       File path
+     * @param    string    $file_content    File content
+     * @param    string    $file_extension  File extension
+     * @return   array     Detailed analysis result
+     */
+    private function perform_comprehensive_malware_analysis($file_path, $file_content, $file_extension)
+    {
+        $indicators = array();
+        $confidence = 0;
+        $is_malicious = false;
         $explanation = '';
-        $suggested_fix = '';
+        $suggested_action = 'none';
 
-        foreach ($suspicious_patterns as $pattern => $reason) {
-            if (strpos($file_content, $pattern) !== false) {
-                $is_malware = true;
-                $explanation = $reason;
-                break;
+        // 1. OBFUSCATION DETECTION (High Priority)
+        $obfuscation_result = $this->detect_obfuscation_techniques($file_content);
+        if ($obfuscation_result['detected']) {
+            $indicators = array_merge($indicators, $obfuscation_result['indicators']);
+            $confidence += $obfuscation_result['confidence'];
+            $is_malicious = true;
+            $explanation = 'Code obfuscation detected: ' . implode(', ', $obfuscation_result['indicators']);
+            $suggested_action = 'quarantine';
+        }
+
+        // 2. BACKDOOR AND SHELL DETECTION
+        $backdoor_result = $this->detect_backdoors_and_shells($file_content);
+        if ($backdoor_result['detected']) {
+            $indicators = array_merge($indicators, $backdoor_result['indicators']);
+            $confidence += $backdoor_result['confidence'];
+            $is_malicious = true;
+            $explanation = 'Backdoor/Shell detected: ' . implode(', ', $backdoor_result['indicators']);
+            $suggested_action = 'delete';
+        }
+
+        // 3. MALICIOUS FUNCTION USAGE
+        $function_result = $this->detect_malicious_functions($file_content, $file_extension);
+        if ($function_result['detected']) {
+            $indicators = array_merge($indicators, $function_result['indicators']);
+            $confidence += $function_result['confidence'];
+            if ($function_result['high_risk']) {
+                $is_malicious = true;
+                $explanation = 'High-risk functions detected: ' . implode(', ', $function_result['indicators']);
+                $suggested_action = 'quarantine';
             }
         }
 
-        // If it's a PHP file in the uploads directory, it's almost always malicious
-        if ($file_extension === 'php' && strpos($file_path, 'wp-content/uploads') !== false) {
-            $is_malware = true;
-            $explanation = 'PHP file found in uploads directory, which is unusual and potentially malicious';
-            $suggested_fix = 'quarantine';
+        // 4. SUSPICIOUS FILE LOCATIONS
+        $location_result = $this->analyze_file_location($file_path, $file_extension);
+        if ($location_result['suspicious']) {
+            $indicators = array_merge($indicators, $location_result['indicators']);
+            $confidence += $location_result['confidence'];
+            $is_malicious = true;
+            $explanation = 'Suspicious file location: ' . $location_result['reason'];
+            $suggested_action = 'quarantine';
         }
 
-        // Check for obfuscated code
-        if ($this->seems_obfuscated($file_content)) {
-            $is_malware = true;
-            $explanation = 'Contains obfuscated code which is a strong indicator of malicious intent';
-            $suggested_fix = 'quarantine';
+        // 5. ENCODING AND ENCRYPTION PATTERNS
+        $encoding_result = $this->detect_malicious_encoding($file_content);
+        if ($encoding_result['detected']) {
+            $indicators = array_merge($indicators, $encoding_result['indicators']);
+            $confidence += $encoding_result['confidence'];
+            if ($confidence > 70) {
+                $is_malicious = true;
+                $explanation = 'Malicious encoding patterns: ' . implode(', ', $encoding_result['indicators']);
+                $suggested_action = 'quarantine';
+            }
+        }
+
+        // 6. NETWORK COMMUNICATION PATTERNS
+        $network_result = $this->detect_network_communication($file_content);
+        if ($network_result['detected']) {
+            $indicators = array_merge($indicators, $network_result['indicators']);
+            $confidence += $network_result['confidence'];
+            if ($network_result['high_risk']) {
+                $is_malicious = true;
+                $explanation = 'Suspicious network communication: ' . implode(', ', $network_result['indicators']);
+                $suggested_action = 'quarantine';
+            }
+        }
+
+        // 7. WORDPRESS-SPECIFIC MALWARE PATTERNS
+        $wp_result = $this->detect_wordpress_specific_malware($file_content, $file_path);
+        if ($wp_result['detected']) {
+            $indicators = array_merge($indicators, $wp_result['indicators']);
+            $confidence += $wp_result['confidence'];
+            $is_malicious = true;
+            $explanation = 'WordPress-specific malware: ' . implode(', ', $wp_result['indicators']);
+            $suggested_action = 'delete';
+        }
+
+        // Cap confidence at 100
+        $confidence = min($confidence, 100);
+
+        return array(
+            'is_malicious' => $is_malicious,
+            'confidence' => $confidence,
+            'explanation' => $explanation ?: 'No malware indicators detected',
+            'suggested_action' => $suggested_action,
+            'indicators' => array_unique($indicators)
+        );
+    }
+
+    /**
+     * Detect various obfuscation techniques used by malware
+     *
+     * @since    1.0.24
+     * @param    string    $content    File content
+     * @return   array     Detection result
+     */
+    private function detect_obfuscation_techniques($content)
+    {
+        $indicators = array();
+        $confidence = 0;
+
+        // 1. Base64 encoding patterns
+        if (preg_match_all('/["\']([A-Za-z0-9+\/]{50,}={0,2})["\']/', $content, $matches)) {
+            foreach ($matches[1] as $encoded) {
+                $decoded = base64_decode($encoded, true);
+                if ($decoded !== false && $this->contains_php_code($decoded)) {
+                    $indicators[] = 'Base64-encoded PHP code';
+                    $confidence += 30;
+                    break;
+                }
+            }
+        }
+
+        // 2. Hexadecimal encoding
+        if (preg_match('/\\\\x[0-9a-fA-F]{2,}/', $content)) {
+            $indicators[] = 'Hexadecimal encoding detected';
+            $confidence += 20;
+        }
+
+        // 3. Character code obfuscation
+        if (preg_match('/chr\s*\(\s*\d+\s*\)/', $content) && substr_count($content, 'chr(') > 5) {
+            $indicators[] = 'Character code obfuscation';
+            $confidence += 25;
+        }
+
+        // 4. String concatenation obfuscation
+        if (preg_match_all('/["\'][^"\']{1,3}["\'](\s*\.\s*["\'][^"\']{1,3}["\']){10,}/', $content)) {
+            $indicators[] = 'String concatenation obfuscation';
+            $confidence += 20;
+        }
+
+        // 5. Excessive use of variables for simple strings
+        if (preg_match_all('/\$[a-zA-Z_][a-zA-Z0-9_]*\s*=\s*["\'][^"\']{1,5}["\'];/', $content) > 20) {
+            $indicators[] = 'Variable-based string obfuscation';
+            $confidence += 15;
+        }
+
+        // 6. gzinflate/gzuncompress patterns
+        if (preg_match('/gz(inflate|uncompress)\s*\(/', $content)) {
+            $indicators[] = 'Compressed code obfuscation';
+            $confidence += 35;
+        }
+
+        // 7. ROT13 or similar simple ciphers
+        if (preg_match('/str_rot13\s*\(/', $content)) {
+            $indicators[] = 'ROT13 obfuscation';
+            $confidence += 25;
+        }
+
+        // 8. Excessive whitespace or formatting anomalies
+        if ($this->has_suspicious_formatting($content)) {
+            $indicators[] = 'Suspicious code formatting';
+            $confidence += 10;
         }
 
         return array(
-            'is_malware' => $is_malware,
-            'explanation' => $explanation,
-            'suggested_fix' => $suggested_fix
+            'detected' => !empty($indicators),
+            'indicators' => $indicators,
+            'confidence' => $confidence
         );
+    }
+
+    /**
+     * Detect backdoors and web shells
+     *
+     * @since    1.0.24
+     * @param    string    $content    File content
+     * @return   array     Detection result
+     */
+    private function detect_backdoors_and_shells($content)
+    {
+        $indicators = array();
+        $confidence = 0;
+
+        // Common backdoor patterns
+        $backdoor_patterns = array(
+            '/password.*=.*["\'][^"\']*["\']/' => 'Hardcoded password',
+            '/if\s*\(\s*\$_POST\[.*\]\s*==.*\)/' => 'POST-based authentication',
+            '/if\s*\(\s*md5\s*\(\s*\$_/' => 'MD5 hash authentication',
+            '/passthru\s*\(\s*\$_/' => 'Command execution via passthru',
+            '/system\s*\(\s*\$_/' => 'Command execution via system',
+            '/exec\s*\(\s*\$_/' => 'Command execution via exec',
+            '/shell_exec\s*\(\s*\$_/' => 'Command execution via shell_exec',
+            '/\$_FILES.*move_uploaded_file/' => 'File upload functionality',
+            '/file_get_contents\s*\(\s*["\']https?:\/\//' => 'Remote file inclusion',
+            '/curl_exec\s*\(/' => 'CURL-based communication',
+            '/fwrite\s*\(.*\$_/' => 'File writing from user input',
+            '/eval\s*\(\s*\$_/' => 'Dynamic code execution'
+        );
+
+        foreach ($backdoor_patterns as $pattern => $description) {
+            if (preg_match($pattern, $content)) {
+                $indicators[] = $description;
+                $confidence += 25;
+            }
+        }
+
+        // Web shell signatures
+        $shell_signatures = array(
+            'c99shell', 'r57shell', 'wso shell', 'b374k', 'adminer',
+            'shell_exec', 'FilesMan', 'Uname:', 'Server IP:', 'phpinfo()',
+            'Safe Mode:', 'eval($_POST', 'assert($_POST', '$_POST[\'cmd\']'
+        );
+
+        foreach ($shell_signatures as $signature) {
+            if (stripos($content, $signature) !== false) {
+                $indicators[] = "Web shell signature: {$signature}";
+                $confidence += 30;
+            }
+        }
+
+        return array(
+            'detected' => !empty($indicators),
+            'indicators' => $indicators,
+            'confidence' => $confidence
+        );
+    }
+
+    /**
+     * Detect malicious function usage
+     *
+     * @since    1.0.24
+     * @param    string    $content    File content
+     * @param    string    $extension  File extension
+     * @return   array     Detection result
+     */
+    private function detect_malicious_functions($content, $extension)
+    {
+        $indicators = array();
+        $confidence = 0;
+        $high_risk = false;
+
+        // High-risk PHP functions
+        $high_risk_functions = array(
+            'eval', 'assert', 'create_function', 'preg_replace.*\/e',
+            'system', 'exec', 'passthru', 'shell_exec', 'popen',
+            'proc_open', 'proc_close', 'proc_get_status', 'proc_nice',
+            'proc_terminate', 'escapeshellarg', 'escapeshellcmd'
+        );
+
+        foreach ($high_risk_functions as $func) {
+            if (preg_match("/{$func}\s*\(/", $content)) {
+                $indicators[] = "High-risk function: {$func}()";
+                $confidence += 20;
+                $high_risk = true;
+            }
+        }
+
+        // Moderate-risk functions (context-dependent)
+        $moderate_risk_functions = array(
+            'base64_decode', 'base64_encode', 'gzinflate', 'gzdeflate',
+            'str_rot13', 'convert_uuencode', 'convert_uudecode',
+            'file_get_contents', 'file_put_contents', 'fopen', 'fwrite',
+            'fputs', 'fgets', 'fread', 'include', 'require',
+            'include_once', 'require_once'
+        );
+
+        $moderate_count = 0;
+        foreach ($moderate_risk_functions as $func) {
+            if (preg_match("/{$func}\s*\(/", $content)) {
+                $moderate_count++;
+                if ($moderate_count > 3) { // Multiple moderate functions = suspicious
+                    $indicators[] = "Multiple encoding/file functions detected";
+                    $confidence += 15;
+                    break;
+                }
+            }
+        }
+
+        // JavaScript suspicious functions
+        if ($extension === 'js') {
+            $js_suspicious = array('eval', 'Function', 'setTimeout', 'setInterval');
+            foreach ($js_suspicious as $func) {
+                if (preg_match("/{$func}\s*\(/", $content)) {
+                    $indicators[] = "Suspicious JavaScript function: {$func}()";
+                    $confidence += 15;
+                }
+            }
+        }
+
+        return array(
+            'detected' => !empty($indicators),
+            'indicators' => $indicators,
+            'confidence' => $confidence,
+            'high_risk' => $high_risk
+        );
+    }
+
+    /**
+     * Analyze file location for suspicious placement
+     *
+     * @since    1.0.24
+     * @param    string    $file_path   File path
+     * @param    string    $extension   File extension
+     * @return   array     Analysis result
+     */
+    private function analyze_file_location($file_path, $extension)
+    {
+        $indicators = array();
+        $confidence = 0;
+        $suspicious = false;
+        $reason = '';
+
+        // PHP files in uploads directory (almost always malicious)
+        if ($extension === 'php' && strpos($file_path, 'wp-content/uploads') !== false) {
+            $indicators[] = 'PHP file in uploads directory';
+            $confidence = 90;
+            $suspicious = true;
+            $reason = 'PHP files should not exist in wp-content/uploads directory';
+        }
+
+        // Hidden files (starting with .)
+        $filename = basename($file_path);
+        if ($filename[0] === '.' && strlen($filename) > 1) {
+            $indicators[] = 'Hidden file';
+            $confidence += 20;
+            $suspicious = true;
+            $reason = 'Hidden files are often used to conceal malicious code';
+        }
+
+        // Suspicious file names
+        $suspicious_names = array(
+            'index.php', 'wp-config.php', '.htaccess', 'shell.php',
+            'cmd.php', 'admin.php', 'login.php', 'wp-blog-header.php'
+        );
+
+        foreach ($suspicious_names as $sus_name) {
+            if ($filename === $sus_name && !$this->is_legitimate_location($file_path, $sus_name)) {
+                $indicators[] = "Suspicious filename: {$sus_name}";
+                $confidence += 25;
+                $suspicious = true;
+                $reason = "File {$sus_name} found in unexpected location";
+            }
+        }
+
+        // Temp or cache directories with executable files
+        if (preg_match('/\/(tmp|temp|cache|log)\/.*\.(php|js|html)$/i', $file_path)) {
+            $indicators[] = 'Executable file in temp directory';
+            $confidence += 30;
+            $suspicious = true;
+            $reason = 'Executable files in temporary directories are suspicious';
+        }
+
+        return array(
+            'suspicious' => $suspicious,
+            'indicators' => $indicators,
+            'confidence' => $confidence,
+            'reason' => $reason
+        );
+    }
+
+    /**
+     * Detect malicious encoding patterns
+     *
+     * @since    1.0.24
+     * @param    string    $content    File content
+     * @return   array     Detection result
+     */
+    private function detect_malicious_encoding($content)
+    {
+        $indicators = array();
+        $confidence = 0;
+
+        // Multiple base64 strings (potential obfuscation)
+        $base64_matches = preg_match_all('/[A-Za-z0-9+\/]{30,}={0,2}/', $content);
+        if ($base64_matches > 5) {
+            $indicators[] = 'Multiple base64 encoded strings';
+            $confidence += 20;
+        }
+
+        // URL encoding patterns
+        if (preg_match_all('/%[0-9a-fA-F]{2}/', $content) > 10) {
+            $indicators[] = 'Extensive URL encoding';
+            $confidence += 15;
+        }
+
+        // Unicode escape sequences
+        if (preg_match('/\\\\u[0-9a-fA-F]{4}/', $content)) {
+            $indicators[] = 'Unicode escape sequences';
+            $confidence += 10;
+        }
+
+        return array(
+            'detected' => !empty($indicators),
+            'indicators' => $indicators,
+            'confidence' => $confidence
+        );
+    }
+
+    /**
+     * Detect suspicious network communication
+     *
+     * @since    1.0.24
+     * @param    string    $content    File content
+     * @return   array     Detection result
+     */
+    private function detect_network_communication($content)
+    {
+        $indicators = array();
+        $confidence = 0;
+        $high_risk = false;
+
+        // Remote file inclusion
+        if (preg_match('/file_get_contents\s*\(\s*["\']https?:\/\//', $content)) {
+            $indicators[] = 'Remote file inclusion detected';
+            $confidence += 25;
+            $high_risk = true;
+        }
+
+        // CURL usage (context-dependent)
+        if (preg_match('/curl_init|curl_exec/', $content)) {
+            $indicators[] = 'CURL network communication';
+            $confidence += 15;
+        }
+
+        // Suspicious domains or IPs
+        $suspicious_patterns = array(
+            '/\d{1,3}\.\d{1,3}\.\d{1,3}\.\d{1,3}:\d+/' => 'Hardcoded IP with port',
+            '/\.tk\/|\.ml\/|\.ga\/|\.cf\//' => 'Suspicious TLD domain',
+            '/pastebin\.com|bit\.ly|tinyurl\.com/' => 'URL shortening service'
+        );
+
+        foreach ($suspicious_patterns as $pattern => $desc) {
+            if (preg_match($pattern, $content)) {
+                $indicators[] = $desc;
+                $confidence += 20;
+                $high_risk = true;
+            }
+        }
+
+        return array(
+            'detected' => !empty($indicators),
+            'indicators' => $indicators,
+            'confidence' => $confidence,
+            'high_risk' => $high_risk
+        );
+    }
+
+    /**
+     * Detect WordPress-specific malware patterns
+     *
+     * @since    1.0.24
+     * @param    string    $content    File content
+     * @param    string    $file_path  File path
+     * @return   array     Detection result
+     */
+    private function detect_wordpress_specific_malware($content, $file_path)
+    {
+        $indicators = array();
+        $confidence = 0;
+
+        // Admin user creation
+        if (preg_match('/wp_create_user|wp_insert_user.*administrator/', $content)) {
+            $indicators[] = 'Automatic admin user creation';
+            $confidence += 40;
+        }
+
+        // Database manipulation
+        if (preg_match('/\$wpdb.*INSERT.*wp_users/', $content)) {
+            $indicators[] = 'Direct user database manipulation';
+            $confidence += 35;
+        }
+
+        // Hooks for malicious purposes
+        $malicious_hooks = array(
+            'wp_head', 'wp_footer', 'init', 'wp_loaded'
+        );
+
+        foreach ($malicious_hooks as $hook) {
+            if (preg_match("/add_action\s*\(\s*['\"]$hook['\"].*(\\\$_POST|\\\$_GET|eval)/", $content)) {
+                $indicators[] = "Malicious WordPress hook: {$hook}";
+                $confidence += 30;
+            }
+        }
+
+        // Fake WordPress files
+        if (basename($file_path) === 'wp-config.php' && !preg_match('/DB_NAME|DB_USER|DB_PASSWORD/', $content)) {
+            $indicators[] = 'Fake wp-config.php file';
+            $confidence += 50;
+        }
+
+        return array(
+            'detected' => !empty($indicators),
+            'indicators' => $indicators,
+            'confidence' => $confidence
+        );
+    }
+
+    /**
+     * Check if content contains PHP code
+     *
+     * @since    1.0.24
+     * @param    string    $content    Content to check
+     * @return   boolean   True if contains PHP code
+     */
+    private function contains_php_code($content)
+    {
+        return strpos($content, '<?php') !== false || strpos($content, '<?=') !== false || 
+               preg_match('/\$[a-zA-Z_]/', $content);
+    }
+
+    /**
+     * Check for suspicious formatting patterns
+     *
+     * @since    1.0.24
+     * @param    string    $content    Content to check
+     * @return   boolean   True if formatting is suspicious
+     */
+    private function has_suspicious_formatting($content)
+    {
+        // Very long lines (potential obfuscation)
+        if (preg_match('/^.{500,}$/m', $content)) {
+            return true;
+        }
+
+        // Excessive semicolons on one line
+        if (preg_match('/.*;.*;.*;.*/', $content)) {
+            return true;
+        }
+
+        // No whitespace around operators (packed code)
+        $operators = preg_match_all('/[a-zA-Z0-9]\+[a-zA-Z0-9]|[a-zA-Z0-9]\-[a-zA-Z0-9]/', $content);
+        if ($operators > 20) {
+            return true;
+        }
+
+        return false;
+    }
+
+    /**
+     * Check if file is in legitimate location
+     *
+     * @since    1.0.24
+     * @param    string    $file_path  File path
+     * @param    string    $filename   Filename
+     * @return   boolean   True if location is legitimate
+     */
+    private function is_legitimate_location($file_path, $filename)
+    {
+        $legitimate_locations = array(
+            'wp-config.php' => array('/wp-config.php'),
+            'index.php' => array('/index.php', '/wp-admin/index.php'),
+            '.htaccess' => array('/.htaccess', '/wp-admin/.htaccess'),
+        );
+
+        if (!isset($legitimate_locations[$filename])) {
+            return true; // Unknown file, assume legitimate
+        }
+
+        foreach ($legitimate_locations[$filename] as $legit_path) {
+            if (strpos($file_path, $legit_path) !== false) {
+                return true;
+            }
+        }
+
+        return false;
     }
 
     /**
@@ -483,21 +1009,65 @@ class Themewire_Security_AI_Analyzer
      */
     private function build_analysis_prompt($file_path, $file_content, $file_extension)
     {
-        $prompt = "Analyze the following " . strtoupper($file_extension) . " file for security issues, malware, or suspicious code:\n\n";
-        $prompt .= "FILE PATH: " . $file_path . "\n\n";
+        $prompt = "You are an expert malware analyst specializing in WordPress security.\n\n";
+        
+        $prompt .= "ANALYSIS TARGET:\n";
+        $prompt .= "File: " . basename($file_path) . "\n";
+        $prompt .= "Path: " . $file_path . "\n";
+        $prompt .= "Type: " . strtoupper($file_extension) . " file\n\n";
+        
         $prompt .= "FILE CONTENT:\n```" . $file_extension . "\n" . $file_content . "\n```\n\n";
 
-        $prompt .= "Please determine if this file contains malware or security vulnerabilities. Focus on:\n";
-        $prompt .= "1. Code obfuscation techniques\n";
-        $prompt .= "2. Backdoors or unauthorized access mechanisms\n";
-        $prompt .= "3. Malicious redirects\n";
-        $prompt .= "4. Exploit code\n";
-        $prompt .= "5. Suspicious functions (eval, base64_decode, etc.)\n\n";
+        $prompt .= "CRITICAL ANALYSIS INSTRUCTIONS:\n";
+        $prompt .= "Analyze this file for malware with expert-level scrutiny. Look for:\n\n";
+        
+        $prompt .= "🔍 OBFUSCATION TECHNIQUES:\n";
+        $prompt .= "- Base64/hex encoding of PHP code\n";
+        $prompt .= "- Character code concatenation (chr() functions)\n";
+        $prompt .= "- String concatenation to hide function names\n";
+        $prompt .= "- gzinflate/gzuncompress compression\n";
+        $prompt .= "- Variable-based string construction\n";
+        $prompt .= "- ROT13 or other cipher obfuscation\n\n";
 
-        $prompt .= "Answer in this format:\n";
+        $prompt .= "🚪 BACKDOORS & SHELLS:\n";
+        $prompt .= "- Password-protected command execution\n";
+        $prompt .= "- File upload/download functionality\n";
+        $prompt .= "- Remote command execution (system, exec, shell_exec)\n";
+        $prompt .= "- eval() or assert() with user input\n";
+        $prompt .= "- Web shell signatures (c99, r57, wso, etc.)\n\n";
+
+        $prompt .= "🌐 NETWORK COMMUNICATION:\n";
+        $prompt .= "- Remote file inclusion patterns\n";
+        $prompt .= "- Suspicious CURL usage\n";
+        $prompt .= "- Hardcoded IPs or suspicious domains\n";
+        $prompt .= "- Data exfiltration attempts\n\n";
+
+        $prompt .= "📍 LOCATION-BASED RISKS:\n";
+        $prompt .= "- PHP files in wp-content/uploads (HIGH RISK)\n";
+        $prompt .= "- Hidden files (starting with .)\n";
+        $prompt .= "- Fake core WordPress files\n";
+        $prompt .= "- Files in temp/cache directories\n\n";
+
+        $prompt .= "🎯 WORDPRESS-SPECIFIC THREATS:\n";
+        $prompt .= "- Unauthorized admin user creation\n";
+        $prompt .= "- Direct database manipulation\n";
+        $prompt .= "- Malicious hook implementations\n";
+        $prompt .= "- Plugin/theme injection\n\n";
+
+        $prompt .= "⚠️ DO NOT FLAG IF:\n";
+        $prompt .= "- File is just minified JavaScript/CSS (legitimate optimization)\n";
+        $prompt .= "- Base64 is used for legitimate data (images, fonts, etc.)\n";
+        $prompt .= "- Functions are used in legitimate, well-structured code\n";
+        $prompt .= "- File is a known legitimate WordPress core/plugin file\n\n";
+
+        $prompt .= "✅ RESPONSE FORMAT (MANDATORY):\n";
         $prompt .= "MALICIOUS: [Yes/No]\n";
-        $prompt .= "EXPLANATION: [Detailed explanation]\n";
-        $prompt .= "SUGGESTED FIX: [quarantine/delete/fix/none]\n";
+        $prompt .= "CONFIDENCE: [0-100]%\n";
+        $prompt .= "EXPLANATION: [Detailed technical explanation of findings]\n";
+        $prompt .= "INDICATORS: [Comma-separated list of specific indicators found]\n";
+        $prompt .= "SUGGESTED_ACTION: [quarantine/delete/fix/monitor/none]\n\n";
+        
+        $prompt .= "IMPORTANT: Base your analysis on concrete evidence. If the file appears to be minified but legitimate, or if obfuscation serves a legitimate purpose (like code protection), do not flag it as malicious.";
 
         return $prompt;
     }
@@ -514,33 +1084,66 @@ class Themewire_Security_AI_Analyzer
         // Default values
         $result = array(
             'is_malware' => false,
+            'confidence' => 0,
             'explanation' => '',
-            'suggested_fix' => ''
+            'suggested_fix' => 'none',
+            'indicators' => array()
         );
 
-        // Look for clear indicators in the response
+        // Parse MALICIOUS field
         if (preg_match('/MALICIOUS:\s*(Yes|No)/i', $response, $matches)) {
             $result['is_malware'] = (strtolower($matches[1]) === 'yes');
         } else if (preg_match('/malware|malicious|suspicious|vulnerability|exploit|backdoor|security risk/i', $response)) {
             $result['is_malware'] = true;
         }
 
-        // Extract explanation
-        if (preg_match('/EXPLANATION:\s*(.+?)(?=SUGGESTED FIX:|$)/is', $response, $matches)) {
+        // Parse CONFIDENCE field
+        if (preg_match('/CONFIDENCE:\s*(\d+)%?/i', $response, $matches)) {
+            $result['confidence'] = (int)$matches[1];
+        } else {
+            // Estimate confidence based on language used
+            if ($result['is_malware']) {
+                if (preg_match('/definitely|clearly|obviously|certain/i', $response)) {
+                    $result['confidence'] = 90;
+                } else if (preg_match('/likely|probably|appears to be/i', $response)) {
+                    $result['confidence'] = 70;
+                } else if (preg_match('/possibly|might be|could be/i', $response)) {
+                    $result['confidence'] = 50;
+                } else {
+                    $result['confidence'] = 60; // Default for detected malware
+                }
+            } else {
+                $result['confidence'] = 20; // Low confidence for clean files
+            }
+        }
+
+        // Parse EXPLANATION field
+        if (preg_match('/EXPLANATION:\s*(.+?)(?=INDICATORS:|SUGGESTED_ACTION:|$)/is', $response, $matches)) {
             $result['explanation'] = trim($matches[1]);
         } else {
             $result['explanation'] = $response;
         }
 
-        // Try to extract suggested fix if available
-        if (preg_match('/SUGGESTED FIX:\s*(quarantine|delete|fix|none)/i', $response, $matches)) {
+        // Parse INDICATORS field
+        if (preg_match('/INDICATORS:\s*(.+?)(?=SUGGESTED_ACTION:|$)/is', $response, $matches)) {
+            $indicators_string = trim($matches[1]);
+            $result['indicators'] = array_map('trim', explode(',', $indicators_string));
+        }
+
+        // Parse SUGGESTED_ACTION field
+        if (preg_match('/SUGGESTED_ACTION:\s*(quarantine|delete|fix|monitor|none)/i', $response, $matches)) {
             $result['suggested_fix'] = strtolower($matches[1]);
-        } else if (strpos(strtolower($response), 'quarantine') !== false) {
-            $result['suggested_fix'] = 'quarantine';
-        } else if (strpos(strtolower($response), 'delete') !== false) {
-            $result['suggested_fix'] = 'delete';
-        } else if (strpos(strtolower($response), 'fix') !== false) {
-            $result['suggested_fix'] = 'fix';
+        } else {
+            // Fallback logic based on content
+            if ($result['is_malware']) {
+                if (preg_match('/backdoor|shell|malicious/i', $response)) {
+                    $result['suggested_fix'] = 'quarantine';
+                } else if (preg_match('/delete|remove/i', $response)) {
+                    $result['suggested_fix'] = 'delete';
+                } else {
+                    $result['suggested_fix'] = 'quarantine';
+                }
+            }
         }
 
         return $result;
