@@ -25,12 +25,12 @@ if (!defined('WPINC')) {
 
 // Define plugin constants
 define('THEMEWIRE_SECURITY_VERSION', '1.0.27');
+define('TWSS_VERSION', '1.0.27');
 define('TWSS_PLUGIN_DIR', plugin_dir_path(__FILE__));
 define('TWSS_PLUGIN_URL', plugin_dir_url(__FILE__));
 define('TWSS_PLUGIN_BASENAME', plugin_basename(__FILE__));
 define('TWSS_GITHUB_USERNAME', 'josephjerryrhule');
 define('TWSS_GITHUB_REPO', 'themewire-ai-security-scanner');
-define('TWSS_VERSION', '1.0.27');
 
 /**
  * The code that runs during plugin activation.
