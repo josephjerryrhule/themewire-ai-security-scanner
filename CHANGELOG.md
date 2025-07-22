@@ -1,5 +1,13 @@
 # Changelog
 
+## [1.0.15] - 2025-07-22
+
+### Fixed
+- **Version Page Error**: Fixed fatal error in version page when checking for updates
+  - Corrected GitHub updater constructor parameters
+  - Replaced non-existent `force_update_check()` method with `clear_cache()`
+  - Added error handling for update check process
+
 ## [1.0.14] - 2025-07-22
 
 ### Fixed

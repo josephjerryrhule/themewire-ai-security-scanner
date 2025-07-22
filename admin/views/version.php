@@ -11,14 +11,18 @@
 
 // Force update check if requested
 if (isset($_GET['force-check']) && $_GET['force-check'] == '1') {
-    $updater = new Themewire_Security_GitHub_Updater(
-        TWSS_GITHUB_USERNAME,
-        TWSS_GITHUB_REPO,
-        TWSS_PLUGIN_DIR . 'themewire-ai-security-scanner.php'
-    );
-    $updater->force_update_check();
+    try {
+        $updater = new Themewire_Security_GitHub_Updater(
+            TWSS_PLUGIN_DIR . 'themewire-ai-security-scanner.php',
+            TWSS_GITHUB_USERNAME . '/' . TWSS_GITHUB_REPO,
+            TWSS_VERSION
+        );
+        $updater->clear_cache();
 
-    echo '<div class="notice notice-success"><p>' . __('Update check completed.', 'themewire-security') . '</p></div>';
+        echo '<div class="notice notice-success"><p>' . __('Update check completed.', 'themewire-security') . '</p></div>';
+    } catch (Exception $e) {
+        echo '<div class="notice notice-error"><p>' . sprintf(__('Error checking for updates: %s', 'themewire-security'), $e->getMessage()) . '</p></div>';
+    }
 }
 
 // Get plugin data
