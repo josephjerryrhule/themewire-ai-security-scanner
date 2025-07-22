@@ -2523,4 +2523,51 @@
       }
     }
   }
+
+  /**
+   * Perform AI analysis on a specific issue
+   *
+   * @param {jQuery} button - The button that was clicked
+   * @param {number} issueId - The issue ID to analyze
+   */
+  function performAIAnalysis(button, issueId) {
+    if (!issueId) {
+      alert('Invalid issue ID');
+      return;
+    }
+
+    // Disable button and show loading state
+    button.prop('disabled', true);
+    var originalText = button.text();
+    button.text('Analyzing...');
+
+    // Perform AI analysis via AJAX
+    $.ajax({
+      url: twss_data.ajax_url,
+      type: 'POST',
+      data: {
+        action: 'twss_analyze_issue',
+        issue_id: issueId,
+        nonce: twss_data.nonce
+      },
+      success: function(response) {
+        if (response.success) {
+          // Show success message
+          alert('AI analysis completed successfully!');
+          // Reload the page to show updated analysis
+          location.reload();
+        } else {
+          alert('Error: ' + (response.data.message || 'AI analysis failed'));
+        }
+      },
+      error: function() {
+        alert('Error performing AI analysis. Please try again.');
+      },
+      complete: function() {
+        // Re-enable button and restore original text
+        button.prop('disabled', false);
+        button.text(originalText);
+      }
+    });
+  }
 })(jQuery);

@@ -1,5 +1,13 @@
 # Changelog
 
+## [1.0.16] - 2025-07-22
+
+### Fixed
+- **JavaScript Error**: Fixed "Uncaught ReferenceError: performAIAnalysis is not defined" error
+  - Added missing `performAIAnalysis()` function to handle AI analysis of individual security issues
+  - Function includes proper error handling, loading states, and user feedback
+  - Integrates with existing `twss_analyze_issue` AJAX endpoint
+
 ## [1.0.15] - 2025-07-22
 
 ### Fixed
