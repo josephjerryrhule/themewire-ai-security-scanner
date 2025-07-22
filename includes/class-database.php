@@ -348,7 +348,15 @@ class Themewire_Security_Database
             }
         }
 
-        // Get the latest progress for each stage
+        // Get the latest progress for each stage and overall current progress
+        $current_progress = $wpdb->get_row($wpdb->prepare(
+            "SELECT stage, progress, message FROM {$wpdb->prefix}twss_scan_progress 
+             WHERE scan_id = %d 
+             ORDER BY timestamp DESC 
+             LIMIT 1",
+            $scan_id
+        ), ARRAY_A);
+
         $progress = $wpdb->get_results($wpdb->prepare(
             "SELECT stage, message FROM (
                 SELECT stage, message, timestamp, 
@@ -365,11 +373,16 @@ class Themewire_Security_Database
             'status' => $scan['status'],
             'total_files' => $scan['total_files'],
             'total_issues' => $scan['issues_found'],
+            'issues_found' => $scan['issues_found'], // Alias for JavaScript compatibility
             'fixed_issues' => $scan['issues_fixed'],
             'high_severity' => $high_severity,
             'medium_severity' => $medium_severity,
             'low_severity' => $low_severity,
-            'progress' => $progress
+            'current_stage' => $current_progress ? $current_progress['stage'] : null,
+            'progress' => $current_progress ? $current_progress['progress'] : 0,
+            'message' => $current_progress ? $current_progress['message'] : 'Initializing scan...',
+            'error_message' => $scan['error_message'],
+            'stage_progress' => $progress
         );
     }
 

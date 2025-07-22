@@ -1,5 +1,14 @@
 # Changelog
 
+## [1.0.18] - 2025-07-22
+
+### Fixed
+- **Scan Progress Timeout**: Fixed scan progress not updating, causing apparent timeouts
+  - Added missing `pollScanStatus()` function to continuously poll scan progress
+  - Enhanced `get_scan_summary()` to return current stage and progress information
+  - Progress now updates every 2 seconds showing real-time scan status
+  - Prevents scan timeout appearance by providing visual feedback during long scans
+
 ## [1.0.17] - 2025-07-22
 
 ### Fixed

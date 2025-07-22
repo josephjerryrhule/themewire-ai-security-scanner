@@ -567,8 +567,13 @@ class Themewire_Security_Admin
 
         $scan_id = isset($_POST['scan_id']) ? intval($_POST['scan_id']) : null;
 
+        // If no scan_id provided, try to get the current scan ID
         if (!$scan_id) {
-            wp_send_json_error(__('Invalid scan ID', 'themewire-security'));
+            $scan_id = get_option('twss_current_scan_id');
+        }
+
+        if (!$scan_id) {
+            wp_send_json_error(__('No scan in progress', 'themewire-security'));
         }
 
         $scan_status = $this->database->get_scan_summary($scan_id);

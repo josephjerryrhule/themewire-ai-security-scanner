@@ -66,7 +66,7 @@
     // Handle Stop Scan button click (uses global function from additional.js)
     $("#stop-scan-button").on("click", function () {
       console.log("Stop scan button clicked");
-      if (typeof window.stopScan === 'function') {
+      if (typeof window.stopScan === "function") {
         window.stopScan();
       }
     });
@@ -74,7 +74,7 @@
     // Handle Clear All Issues button click (uses global function from additional.js)
     $("#clear-all-issues-button").on("click", function () {
       console.log("Clear all issues button clicked");
-      if (typeof window.clearAllIssues === 'function') {
+      if (typeof window.clearAllIssues === "function") {
         window.clearAllIssues();
       }
     });
@@ -83,7 +83,7 @@
     $(document).on("click", ".clear-scan-issues-button", function () {
       var scanId = $(this).data("scan-id");
       console.log("Clear scan issues button clicked for scan:", scanId);
-      if (typeof window.clearScanIssues === 'function') {
+      if (typeof window.clearScanIssues === "function") {
         window.clearScanIssues(scanId);
       }
     });
@@ -616,7 +616,9 @@
    */
   function clearScanIssues(scanId) {
     if (confirm("Are you sure you want to clear issues for this scan?")) {
-      const button = $(".clear-scan-issues-button[data-scan-id='" + scanId + "']");
+      const button = $(
+        ".clear-scan-issues-button[data-scan-id='" + scanId + "']"
+      );
       button.prop("disabled", true).text("Clearing...");
 
       $.ajax({
@@ -1419,7 +1421,9 @@
    */
   function clearScanIssues(scanId) {
     if (confirm("Are you sure you want to clear issues for this scan?")) {
-      const button = $(".clear-scan-issues-button[data-scan-id='" + scanId + "']");
+      const button = $(
+        ".clear-scan-issues-button[data-scan-id='" + scanId + "']"
+      );
       button.prop("disabled", true).text("Clearing...");
 
       $.ajax({
@@ -2222,7 +2226,9 @@
    */
   function clearScanIssues(scanId) {
     if (confirm("Are you sure you want to clear issues for this scan?")) {
-      const button = $(".clear-scan-issues-button[data-scan-id='" + scanId + "']");
+      const button = $(
+        ".clear-scan-issues-button[data-scan-id='" + scanId + "']"
+      );
       button.prop("disabled", true).text("Clearing...");
 
       $.ajax({
@@ -2498,7 +2504,9 @@
         return;
       }
 
-      if (confirm("Are you sure you want to " + action + " the selected files?")) {
+      if (
+        confirm("Are you sure you want to " + action + " the selected files?")
+      ) {
         // Perform the bulk action via AJAX
         $.ajax({
           url: twss_data.ajax_url,
@@ -2532,42 +2540,147 @@
    */
   function performAIAnalysis(button, issueId) {
     if (!issueId) {
-      alert('Invalid issue ID');
+      alert("Invalid issue ID");
       return;
     }
 
     // Disable button and show loading state
-    button.prop('disabled', true);
+    button.prop("disabled", true);
     var originalText = button.text();
-    button.text('Analyzing...');
+    button.text("Analyzing...");
 
     // Perform AI analysis via AJAX
     $.ajax({
       url: twss_data.ajax_url,
-      type: 'POST',
+      type: "POST",
       data: {
-        action: 'twss_analyze_issue',
+        action: "twss_analyze_issue",
         issue_id: issueId,
-        nonce: twss_data.nonce
+        nonce: twss_data.nonce,
       },
-      success: function(response) {
+      success: function (response) {
         if (response.success) {
           // Show success message
-          alert('AI analysis completed successfully!');
+          alert("AI analysis completed successfully!");
           // Reload the page to show updated analysis
           location.reload();
         } else {
-          alert('Error: ' + (response.data.message || 'AI analysis failed'));
+          alert("Error: " + (response.data.message || "AI analysis failed"));
         }
       },
-      error: function() {
-        alert('Error performing AI analysis. Please try again.');
+      error: function () {
+        alert("Error performing AI analysis. Please try again.");
       },
-      complete: function() {
+      complete: function () {
         // Re-enable button and restore original text
-        button.prop('disabled', false);
+        button.prop("disabled", false);
         button.text(originalText);
-      }
+      },
     });
+  }
+
+  /**
+   * Poll scan status and update progress
+   * 
+   * @param {string} scanId - The scan ID to check (can be null for current scan)
+   */
+  function pollScanStatus(scanId) {
+    // Clear any existing polling interval
+    if (pollInterval) {
+      clearInterval(pollInterval);
+      pollInterval = null;
+    }
+
+    // Start polling for scan status updates
+    pollInterval = setInterval(function() {
+      $.ajax({
+        url: twss_data.ajax_url,
+        type: "POST",
+        data: {
+          action: "twss_get_scan_status",
+          scan_id: scanId,
+          nonce: twss_data.nonce,
+        },
+        success: function(response) {
+          if (response.success && response.data) {
+            var data = response.data;
+            
+            // Update progress based on current stage
+            if (data.current_stage && data.progress !== undefined) {
+              // Update stage progress
+              stageProgress[data.current_stage] = parseInt(data.progress);
+              
+              // Calculate overall progress based on stage weights
+              var totalProgress = 0;
+              for (var stage in stageWeights) {
+                if (stageProgress[stage] > 0) {
+                  totalProgress += (stageProgress[stage] / 100) * stageWeights[stage];
+                }
+              }
+              overallProgress = Math.round(totalProgress * 100);
+              
+              // Update progress bar and message
+              updateProgressBar(
+                overallProgress, 
+                data.current_stage, 
+                data.message || 'Scanning in progress...'
+              );
+            }
+            
+            // Check if scan is complete
+            if (data.status === 'completed' || data.status === 'failed' || data.status === 'stopped') {
+              // Stop polling
+              clearInterval(pollInterval);
+              pollInterval = null;
+              
+              // Update UI based on final status
+              var statusArea = $("#scan-status-area");
+              var startButton = $("#start-scan-button");
+              var resumeButton = $("#resume-scan-button");
+              var stopButton = $("#stop-scan-button");
+              
+              if (data.status === 'completed') {
+                updateProgressBar(100, 'completed', 'Scan completed successfully!');
+                statusArea.html(
+                  '<div class="notice notice-success"><p>Scan completed! Found ' + 
+                  (data.issues_found || 0) + ' security issues.</p></div>'
+                );
+              } else if (data.status === 'failed') {
+                statusArea.html(
+                  '<div class="notice notice-error"><p>Scan failed: ' + 
+                  (data.error_message || 'Unknown error') + '</p></div>'
+                );
+              } else if (data.status === 'stopped') {
+                statusArea.html(
+                  '<div class="notice notice-warning"><p>Scan was stopped by user.</p></div>'
+                );
+              }
+              
+              // Re-enable buttons
+              startButton.prop("disabled", false).text("Start New Scan");
+              if (resumeButton.length) {
+                resumeButton.prop("disabled", false);
+              }
+              if (stopButton.length) {
+                stopButton.prop("disabled", true);
+              }
+            }
+          } else {
+            console.log('No scan status data received or scan not found');
+          }
+        },
+        error: function(xhr) {
+          console.log('Error polling scan status:', xhr.responseText);
+          // Continue polling on error unless it's a 404 (scan not found)
+          if (xhr.status === 404) {
+            clearInterval(pollInterval);
+            pollInterval = null;
+          }
+        }
+      });
+    }, 2000); // Poll every 2 seconds
+
+    // Update global reference for stop scan functionality
+    window.twssPollInterval = pollInterval;
   }
 })(jQuery);
