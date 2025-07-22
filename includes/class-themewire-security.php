@@ -126,6 +126,7 @@ class Themewire_Security
         add_action('wp_ajax_twss_resume_scan', array($plugin_admin, 'ajax_resume_scan'));
         add_action('wp_ajax_twss_stop_scan', array($plugin_admin, 'ajax_stop_scan'));
         add_action('wp_ajax_twss_get_scan_status', array($plugin_admin, 'ajax_get_scan_status'));
+        add_action('wp_ajax_twss_process_scan_chunk', array($plugin_admin, 'ajax_process_scan_chunk'));
         add_action('wp_ajax_twss_fix_issue', array($plugin_admin, 'ajax_fix_issue'));
         add_action('wp_ajax_twss_quarantine_file', array($plugin_admin, 'ajax_quarantine_file'));
         add_action('wp_ajax_twss_whitelist_file', array($plugin_admin, 'ajax_whitelist_file'));

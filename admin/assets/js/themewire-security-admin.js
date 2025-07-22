@@ -2614,8 +2614,6 @@
     }
   }
 
-
-
   /**
    * Perform AI analysis on a specific issue
    *
@@ -2664,7 +2662,7 @@
   }
 
   /**
-   * Poll scan status and update progress
+   * Poll scan status and update progress with chunked processing
    *
    * @param {string} scanId - The scan ID to check (can be null for current scan)
    */
@@ -2759,6 +2757,9 @@
               if (stopButton.length) {
                 stopButton.prop("disabled", true);
               }
+            } else if (data.status === "running") {
+              // For chunked scans, trigger the next chunk processing
+              processNextChunk();
             }
           } else {
             console.log("No scan status data received or scan not found");
@@ -2773,10 +2774,77 @@
           }
         },
       });
-    }, 2000); // Poll every 2 seconds
+    }, 3000); // Poll every 3 seconds for chunked scans
 
     // Update global reference for stop scan functionality
     window.twssPollInterval = pollInterval;
+  }
+
+  /**
+   * Process the next chunk of a chunked scan
+   */
+  function processNextChunk() {
+    $.ajax({
+      url: twss_data.ajax_url,
+      type: "POST",
+      data: {
+        action: "twss_process_scan_chunk",
+        nonce: twss_data.nonce,
+      },
+      success: function (response) {
+        if (response.success && response.data) {
+          var data = response.data;
+
+          // Update progress
+          if (data.stage && data.progress !== undefined) {
+            stageProgress[data.stage] = parseInt(data.progress);
+
+            // Calculate overall progress
+            var totalProgress = 0;
+            for (var stage in stageWeights) {
+              if (stageProgress[stage] > 0) {
+                totalProgress +=
+                  (stageProgress[stage] / 100) * stageWeights[stage];
+              }
+            }
+            overallProgress = Math.round(totalProgress * 100);
+
+            updateProgressBar(
+              overallProgress,
+              data.stage,
+              data.message || "Processing..."
+            );
+          }
+
+          // If scan should continue, schedule next chunk
+          if (data.continue) {
+            setTimeout(processNextChunk, 1000); // Process next chunk after 1 second
+          } else {
+            // Scan completed, stop polling and update UI
+            clearInterval(pollInterval);
+            pollInterval = null;
+
+            updateProgressBar(100, "completed", "Scan completed successfully!");
+            $("#scan-status-area").html(
+              '<div class="notice notice-success"><p>Scan completed! Processing results...</p></div>'
+            );
+
+            // Re-enable buttons
+            $("#start-scan-button")
+              .prop("disabled", false)
+              .text("Start New Scan");
+            $("#resume-scan-button").prop("disabled", false);
+            $("#stop-scan-button").prop("disabled", true);
+          }
+        } else {
+          console.error("Error processing scan chunk:", response.data);
+        }
+      },
+      error: function (xhr) {
+        console.error("AJAX error processing scan chunk:", xhr.responseText);
+        // Don't stop the scan on chunk processing errors, continue polling
+      },
+    });
   }
 
   /**

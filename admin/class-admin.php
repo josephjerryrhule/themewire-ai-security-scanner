@@ -543,7 +543,8 @@ class Themewire_Security_Admin
             wp_send_json_error(__('You do not have permission to perform this action', 'themewire-security'));
         }
 
-        $result = $this->scanner->start_scan();
+        // Use chunked scanning to prevent timeouts
+        $result = $this->scanner->start_chunked_scan();
 
         if ($result['success']) {
             wp_send_json_success($result);
@@ -582,6 +583,28 @@ class Themewire_Security_Admin
             wp_send_json_success($scan_status);
         } else {
             wp_send_json_error(__('Scan not found', 'themewire-security'));
+        }
+    }
+
+    /**
+     * AJAX handler for processing a scan chunk
+     *
+     * @since    1.0.23
+     */
+    public function ajax_process_scan_chunk()
+    {
+        check_ajax_referer('twss_nonce', 'nonce');
+
+        if (!current_user_can('manage_options')) {
+            wp_send_json_error(__('You do not have permission to perform this action', 'themewire-security'));
+        }
+
+        $result = $this->scanner->process_scan_chunk();
+
+        if ($result['success']) {
+            wp_send_json_success($result);
+        } else {
+            wp_send_json_error($result);
         }
     }
 
