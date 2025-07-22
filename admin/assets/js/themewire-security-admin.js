@@ -2581,7 +2581,7 @@
 
   /**
    * Poll scan status and update progress
-   * 
+   *
    * @param {string} scanId - The scan ID to check (can be null for current scan)
    */
   function pollScanStatus(scanId) {
@@ -2592,7 +2592,7 @@
     }
 
     // Start polling for scan status updates
-    pollInterval = setInterval(function() {
+    pollInterval = setInterval(function () {
       $.ajax({
         url: twss_data.ajax_url,
         type: "POST",
@@ -2601,61 +2601,72 @@
           scan_id: scanId,
           nonce: twss_data.nonce,
         },
-        success: function(response) {
+        success: function (response) {
           if (response.success && response.data) {
             var data = response.data;
-            
+
             // Update progress based on current stage
             if (data.current_stage && data.progress !== undefined) {
               // Update stage progress
               stageProgress[data.current_stage] = parseInt(data.progress);
-              
+
               // Calculate overall progress based on stage weights
               var totalProgress = 0;
               for (var stage in stageWeights) {
                 if (stageProgress[stage] > 0) {
-                  totalProgress += (stageProgress[stage] / 100) * stageWeights[stage];
+                  totalProgress +=
+                    (stageProgress[stage] / 100) * stageWeights[stage];
                 }
               }
               overallProgress = Math.round(totalProgress * 100);
-              
+
               // Update progress bar and message
               updateProgressBar(
-                overallProgress, 
-                data.current_stage, 
-                data.message || 'Scanning in progress...'
+                overallProgress,
+                data.current_stage,
+                data.message || "Scanning in progress..."
               );
             }
-            
+
             // Check if scan is complete
-            if (data.status === 'completed' || data.status === 'failed' || data.status === 'stopped') {
+            if (
+              data.status === "completed" ||
+              data.status === "failed" ||
+              data.status === "stopped"
+            ) {
               // Stop polling
               clearInterval(pollInterval);
               pollInterval = null;
-              
+
               // Update UI based on final status
               var statusArea = $("#scan-status-area");
               var startButton = $("#start-scan-button");
               var resumeButton = $("#resume-scan-button");
               var stopButton = $("#stop-scan-button");
-              
-              if (data.status === 'completed') {
-                updateProgressBar(100, 'completed', 'Scan completed successfully!');
-                statusArea.html(
-                  '<div class="notice notice-success"><p>Scan completed! Found ' + 
-                  (data.issues_found || 0) + ' security issues.</p></div>'
+
+              if (data.status === "completed") {
+                updateProgressBar(
+                  100,
+                  "completed",
+                  "Scan completed successfully!"
                 );
-              } else if (data.status === 'failed') {
                 statusArea.html(
-                  '<div class="notice notice-error"><p>Scan failed: ' + 
-                  (data.error_message || 'Unknown error') + '</p></div>'
+                  '<div class="notice notice-success"><p>Scan completed! Found ' +
+                    (data.issues_found || 0) +
+                    " security issues.</p></div>"
                 );
-              } else if (data.status === 'stopped') {
+              } else if (data.status === "failed") {
+                statusArea.html(
+                  '<div class="notice notice-error"><p>Scan failed: ' +
+                    (data.error_message || "Unknown error") +
+                    "</p></div>"
+                );
+              } else if (data.status === "stopped") {
                 statusArea.html(
                   '<div class="notice notice-warning"><p>Scan was stopped by user.</p></div>'
                 );
               }
-              
+
               // Re-enable buttons
               startButton.prop("disabled", false).text("Start New Scan");
               if (resumeButton.length) {
@@ -2666,17 +2677,17 @@
               }
             }
           } else {
-            console.log('No scan status data received or scan not found');
+            console.log("No scan status data received or scan not found");
           }
         },
-        error: function(xhr) {
-          console.log('Error polling scan status:', xhr.responseText);
+        error: function (xhr) {
+          console.log("Error polling scan status:", xhr.responseText);
           // Continue polling on error unless it's a 404 (scan not found)
           if (xhr.status === 404) {
             clearInterval(pollInterval);
             pollInterval = null;
           }
-        }
+        },
       });
     }, 2000); // Poll every 2 seconds
 

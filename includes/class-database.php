@@ -193,6 +193,42 @@ class Themewire_Security_Database
             return false;
         }
 
+        // Enhanced file validation to prevent ghost files
+        // Skip validation only for specific issue types that are about missing files
+        $skip_existence_validation = in_array($issue_type, [
+            'core_file_missing',
+            'plugin_file_missing', 
+            'theme_file_missing'
+        ]);
+
+        if (!$skip_existence_validation) {
+            // Multiple layers of validation to ensure file actually exists
+            $realpath = realpath($file_path);
+            
+            if (
+                // Basic existence check
+                !file_exists($file_path) ||
+                // Ensure it's a regular file (not directory or special file)
+                !is_file($file_path) ||
+                // Check if readable
+                !is_readable($file_path) ||
+                // Ensure realpath resolves (not a broken symlink)
+                $realpath === false ||
+                // Verify the resolved path also exists
+                !file_exists($realpath) ||
+                // Ensure file has content (size check)
+                filesize($file_path) === false ||
+                filesize($file_path) <= 0
+            ) {
+                // Log ghost files that were skipped
+                error_log("TWSS: Skipped adding issue for non-existent/invalid file: {$file_path} (Type: {$issue_type})");
+                return false;
+            }
+            
+            // Use realpath for consistent file path storage
+            $file_path = $realpath;
+        }
+
         $wpdb->insert(
             $wpdb->prefix . 'twss_issues',
             array(
@@ -580,5 +616,62 @@ class Themewire_Security_Database
         );
 
         return $result !== false;
+    }
+
+    /**
+     * Clean up ghost files from issues table
+     * Removes issues for files that no longer exist
+     *
+     * @since    1.0.19
+     * @return   int Number of ghost issues removed
+     */
+    public function cleanup_ghost_issues()
+    {
+        global $wpdb;
+
+        $table_issues = $wpdb->prefix . 'twss_issues';
+        
+        // Get all issues that are not about missing files
+        $issues = $wpdb->get_results($wpdb->prepare(
+            "SELECT id, file_path, issue_type FROM {$table_issues} 
+             WHERE issue_type NOT IN ('core_file_missing', 'plugin_file_missing', 'theme_file_missing')
+             AND status = 'pending'",
+        ), ARRAY_A);
+
+        $ghost_count = 0;
+        $ghost_ids = array();
+
+        foreach ($issues as $issue) {
+            $file_path = $issue['file_path'];
+            $realpath = realpath($file_path);
+            
+            // Check if file exists and is valid
+            if (
+                !file_exists($file_path) ||
+                !is_file($file_path) ||
+                !is_readable($file_path) ||
+                $realpath === false ||
+                !file_exists($realpath) ||
+                filesize($file_path) === false ||
+                filesize($file_path) <= 0
+            ) {
+                $ghost_ids[] = intval($issue['id']);
+                $ghost_count++;
+                error_log("TWSS: Found ghost issue for non-existent file: {$file_path} (Issue ID: {$issue['id']})");
+            }
+        }
+
+        // Remove ghost issues in batches
+        if (!empty($ghost_ids)) {
+            $id_placeholders = implode(',', array_fill(0, count($ghost_ids), '%d'));
+            $wpdb->query($wpdb->prepare(
+                "DELETE FROM {$table_issues} WHERE id IN ({$id_placeholders})",
+                ...$ghost_ids
+            ));
+
+            error_log("TWSS: Removed {$ghost_count} ghost issues from database");
+        }
+
+        return $ghost_count;
     }
 }
