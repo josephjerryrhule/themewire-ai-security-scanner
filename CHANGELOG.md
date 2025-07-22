@@ -1,5 +1,10 @@
 # Changelog
 
+## [1.0.14] - 2025-07-22
+
+### Fixed
+- **Method Visibility Error**: Changed `clear_scan_checkpoints()` method visibility from private to public in scanner class to prevent fatal error when clearing scan results from admin interface
+
 ## [1.0.13] - 2025-07-22
 
 ### Fixed

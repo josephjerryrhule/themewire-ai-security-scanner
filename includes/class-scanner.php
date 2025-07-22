@@ -1530,7 +1530,7 @@ class Themewire_Security_Scanner
      *
      * @since    1.0.2
      */
-    private function clear_scan_checkpoints()
+    public function clear_scan_checkpoints()
     {
         $current_scan_id = get_transient('twss_current_scan_id');
         if ($current_scan_id) {
