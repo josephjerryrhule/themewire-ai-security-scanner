@@ -549,6 +549,10 @@ class Themewire_Security_Admin
         if ($result['success']) {
             wp_send_json_success($result);
         } else {
+            // Sanitize error message before sending to user
+            if (isset($result['message'])) {
+                $result['message'] = $this->sanitize_error_message($result['message']);
+            }
             wp_send_json_error($result);
         }
     }
@@ -915,7 +919,8 @@ class Themewire_Security_Admin
             }
         } catch (Exception $e) {
             error_log('TWSS AI Analysis Error: ' . $e->getMessage());
-            wp_send_json_error(__('An error occurred during AI analysis', 'themewire-security'));
+            $sanitized_message = $this->sanitize_error_message($e->getMessage());
+            wp_send_json_error($sanitized_message);
         }
     }
 
@@ -1267,5 +1272,51 @@ class Themewire_Security_Admin
             ),
             'ghost_count' => $ghost_count
         ));
+    }
+
+    /**
+     * Sanitize error messages for user display
+     * 
+     * @since    1.0.27
+     * @param    string    $error_message    Raw error message
+     * @return   string    Sanitized user-friendly message
+     */
+    private function sanitize_error_message($error_message)
+    {
+        // Check for API quota/rate limiting errors
+        if (strpos($error_message, 'quota') !== false || 
+            strpos($error_message, 'rate limited') !== false || 
+            strpos($error_message, 'temporarily unavailable') !== false ||
+            strpos($error_message, 'RESOURCE_EXHAUSTED') !== false) {
+            
+            return __('AI analysis service is temporarily unavailable due to high demand. The scanner is using pattern-based detection as a fallback. Please try again later for enhanced AI analysis.', 'themewire-security');
+        }
+        
+        // Check for connection errors
+        if (strpos($error_message, 'connection') !== false || 
+            strpos($error_message, 'timeout') !== false ||
+            strpos($error_message, 'network') !== false) {
+            
+            return __('Network connectivity issue detected. Please check your internet connection and try again.', 'themewire-security');
+        }
+        
+        // Check for authentication errors
+        if (strpos($error_message, 'authentication') !== false || 
+            strpos($error_message, 'API key') !== false ||
+            strpos($error_message, 'unauthorized') !== false) {
+            
+            return __('API authentication failed. Please check your API key settings in the plugin configuration.', 'themewire-security');
+        }
+        
+        // Check for file system errors
+        if (strpos($error_message, 'file') !== false && 
+            (strpos($error_message, 'permission') !== false || 
+             strpos($error_message, 'access') !== false)) {
+            
+            return __('File access permission issue. Please check file permissions on your WordPress installation.', 'themewire-security');
+        }
+        
+        // Generic fallback for unhandled errors (but don't expose technical details)
+        return __('An unexpected error occurred during the security scan. Please try again or contact support if the issue persists.', 'themewire-security');
     }
 }
