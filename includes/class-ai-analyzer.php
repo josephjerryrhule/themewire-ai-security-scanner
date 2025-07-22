@@ -293,10 +293,10 @@ class Themewire_Security_AI_Analyzer
      * @param    string    $file_extension  File extension
      * @return   array     Analysis result
      */
-    private function analyze_with_fallback($file_path, $file_content, $file_extension)
+    public function analyze_with_fallback($file_path, $file_content, $file_extension)
     {
         $analysis_result = $this->perform_comprehensive_malware_analysis($file_path, $file_content, $file_extension);
-        
+
         return array(
             'is_malware' => $analysis_result['is_malicious'],
             'explanation' => $analysis_result['explanation'],
@@ -521,9 +521,20 @@ class Themewire_Security_AI_Analyzer
 
         // Web shell signatures
         $shell_signatures = array(
-            'c99shell', 'r57shell', 'wso shell', 'b374k', 'adminer',
-            'shell_exec', 'FilesMan', 'Uname:', 'Server IP:', 'phpinfo()',
-            'Safe Mode:', 'eval($_POST', 'assert($_POST', '$_POST[\'cmd\']'
+            'c99shell',
+            'r57shell',
+            'wso shell',
+            'b374k',
+            'adminer',
+            'shell_exec',
+            'FilesMan',
+            'Uname:',
+            'Server IP:',
+            'phpinfo()',
+            'Safe Mode:',
+            'eval($_POST',
+            'assert($_POST',
+            '$_POST[\'cmd\']'
         );
 
         foreach ($shell_signatures as $signature) {
@@ -556,10 +567,22 @@ class Themewire_Security_AI_Analyzer
 
         // High-risk PHP functions
         $high_risk_functions = array(
-            'eval', 'assert', 'create_function', 'preg_replace.*\/e',
-            'system', 'exec', 'passthru', 'shell_exec', 'popen',
-            'proc_open', 'proc_close', 'proc_get_status', 'proc_nice',
-            'proc_terminate', 'escapeshellarg', 'escapeshellcmd'
+            'eval',
+            'assert',
+            'create_function',
+            'preg_replace.*\/e',
+            'system',
+            'exec',
+            'passthru',
+            'shell_exec',
+            'popen',
+            'proc_open',
+            'proc_close',
+            'proc_get_status',
+            'proc_nice',
+            'proc_terminate',
+            'escapeshellarg',
+            'escapeshellcmd'
         );
 
         foreach ($high_risk_functions as $func) {
@@ -572,11 +595,24 @@ class Themewire_Security_AI_Analyzer
 
         // Moderate-risk functions (context-dependent)
         $moderate_risk_functions = array(
-            'base64_decode', 'base64_encode', 'gzinflate', 'gzdeflate',
-            'str_rot13', 'convert_uuencode', 'convert_uudecode',
-            'file_get_contents', 'file_put_contents', 'fopen', 'fwrite',
-            'fputs', 'fgets', 'fread', 'include', 'require',
-            'include_once', 'require_once'
+            'base64_decode',
+            'base64_encode',
+            'gzinflate',
+            'gzdeflate',
+            'str_rot13',
+            'convert_uuencode',
+            'convert_uudecode',
+            'file_get_contents',
+            'file_put_contents',
+            'fopen',
+            'fwrite',
+            'fputs',
+            'fgets',
+            'fread',
+            'include',
+            'require',
+            'include_once',
+            'require_once'
         );
 
         $moderate_count = 0;
@@ -644,8 +680,14 @@ class Themewire_Security_AI_Analyzer
 
         // Suspicious file names
         $suspicious_names = array(
-            'index.php', 'wp-config.php', '.htaccess', 'shell.php',
-            'cmd.php', 'admin.php', 'login.php', 'wp-blog-header.php'
+            'index.php',
+            'wp-config.php',
+            '.htaccess',
+            'shell.php',
+            'cmd.php',
+            'admin.php',
+            'login.php',
+            'wp-blog-header.php'
         );
 
         foreach ($suspicious_names as $sus_name) {
@@ -787,7 +829,10 @@ class Themewire_Security_AI_Analyzer
 
         // Hooks for malicious purposes
         $malicious_hooks = array(
-            'wp_head', 'wp_footer', 'init', 'wp_loaded'
+            'wp_head',
+            'wp_footer',
+            'init',
+            'wp_loaded'
         );
 
         foreach ($malicious_hooks as $hook) {
@@ -819,8 +864,8 @@ class Themewire_Security_AI_Analyzer
      */
     private function contains_php_code($content)
     {
-        return strpos($content, '<?php') !== false || strpos($content, '<?=') !== false || 
-               preg_match('/\$[a-zA-Z_]/', $content);
+        return strpos($content, '<?php') !== false || strpos($content, '<?=') !== false ||
+            preg_match('/\$[a-zA-Z_]/', $content);
     }
 
     /**
@@ -992,9 +1037,36 @@ class Themewire_Security_AI_Analyzer
         if (isset($response_data['candidates'][0]['content']['parts'][0]['text'])) {
             return $response_data['candidates'][0]['content']['parts'][0]['text'];
         } else {
-            // Log the error for debugging
-            error_log('Gemini API Error: ' . print_r($response_data, true));
-            throw new Exception('Invalid API response from Gemini');
+            // Handle specific API errors
+            if (isset($response_data['error'])) {
+                $error = $response_data['error'];
+                $error_code = isset($error['code']) ? $error['code'] : 0;
+                $error_message = isset($error['message']) ? $error['message'] : 'Unknown API error';
+                $error_status = isset($error['status']) ? $error['status'] : 'UNKNOWN';
+                
+                // Handle quota exhausted error (429)
+                if ($error_code === 429 || $error_status === 'RESOURCE_EXHAUSTED') {
+                    // Log sanitized error for admin
+                    error_log('Gemini API Quota Exhausted - Falling back to pattern-based analysis');
+                    
+                    // Return user-friendly error message
+                    throw new Exception('AI analysis temporarily unavailable due to quota limits. Using pattern-based analysis instead.');
+                }
+                
+                // Handle rate limiting
+                if ($error_code === 429) {
+                    error_log('Gemini API Rate Limited - Retrying with pattern analysis');
+                    throw new Exception('AI service rate limited. Falling back to pattern analysis.');
+                }
+                
+                // Handle other API errors with sanitized messages
+                error_log("Gemini API Error [{$error_code}]: {$error_message}");
+                throw new Exception("AI analysis service error. Using pattern-based detection instead.");
+            }
+            
+            // Log raw response for debugging (but sanitize in production)
+            error_log('Gemini API: Invalid response structure received');
+            throw new Exception('AI service returned invalid response. Using fallback analysis.');
         }
     }
 
@@ -1010,17 +1082,17 @@ class Themewire_Security_AI_Analyzer
     private function build_analysis_prompt($file_path, $file_content, $file_extension)
     {
         $prompt = "You are an expert malware analyst specializing in WordPress security.\n\n";
-        
+
         $prompt .= "ANALYSIS TARGET:\n";
         $prompt .= "File: " . basename($file_path) . "\n";
         $prompt .= "Path: " . $file_path . "\n";
         $prompt .= "Type: " . strtoupper($file_extension) . " file\n\n";
-        
+
         $prompt .= "FILE CONTENT:\n```" . $file_extension . "\n" . $file_content . "\n```\n\n";
 
         $prompt .= "CRITICAL ANALYSIS INSTRUCTIONS:\n";
         $prompt .= "Analyze this file for malware with expert-level scrutiny. Look for:\n\n";
-        
+
         $prompt .= "🔍 OBFUSCATION TECHNIQUES:\n";
         $prompt .= "- Base64/hex encoding of PHP code\n";
         $prompt .= "- Character code concatenation (chr() functions)\n";
@@ -1066,7 +1138,7 @@ class Themewire_Security_AI_Analyzer
         $prompt .= "EXPLANATION: [Detailed technical explanation of findings]\n";
         $prompt .= "INDICATORS: [Comma-separated list of specific indicators found]\n";
         $prompt .= "SUGGESTED_ACTION: [quarantine/delete/fix/monitor/none]\n\n";
-        
+
         $prompt .= "IMPORTANT: Base your analysis on concrete evidence. If the file appears to be minified but legitimate, or if obfuscation serves a legitimate purpose (like code protection), do not flag it as malicious.";
 
         return $prompt;

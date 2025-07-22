@@ -124,7 +124,16 @@ class Themewire_Security_Scanner
      * @var      array    $priority_extensions
      */
     private $priority_extensions = array(
-        'php', 'js', 'html', 'htm', 'phtml', 'php3', 'php4', 'php5', 'php7', 'php8'
+        'php',
+        'js',
+        'html',
+        'htm',
+        'phtml',
+        'php3',
+        'php4',
+        'php5',
+        'php7',
+        'php8'
     );
 
     /**
@@ -135,12 +144,38 @@ class Themewire_Security_Scanner
      * @var      array    $skip_extensions
      */
     private $skip_extensions = array(
-        'jpg', 'jpeg', 'png', 'gif', 'webp', 'svg', 'ico',
-        'pdf', 'doc', 'docx', 'xls', 'xlsx', 'ppt', 'pptx',
-        'zip', 'rar', '7z', 'tar', 'gz',
-        'mp3', 'mp4', 'wav', 'avi', 'mov',
-        'css', 'sass', 'scss', 'less',
-        'woff', 'woff2', 'ttf', 'eot'
+        'jpg',
+        'jpeg',
+        'png',
+        'gif',
+        'webp',
+        'svg',
+        'ico',
+        'pdf',
+        'doc',
+        'docx',
+        'xls',
+        'xlsx',
+        'ppt',
+        'pptx',
+        'zip',
+        'rar',
+        '7z',
+        'tar',
+        'gz',
+        'mp3',
+        'mp4',
+        'wav',
+        'avi',
+        'mov',
+        'css',
+        'sass',
+        'scss',
+        'less',
+        'woff',
+        'woff2',
+        'ttf',
+        'eot'
     );
 
     /**
@@ -193,10 +228,10 @@ class Themewire_Security_Scanner
     {
         // Analyze server performance
         $this->analyze_server_performance();
-        
+
         // Optimize batch size based on performance
         $this->optimize_batch_size();
-        
+
         if ($this->logger) {
             $this->logger->info('Intelligent scanning initialized', array(
                 'performance_class' => $this->performance_metrics['performance_class'],
@@ -313,8 +348,14 @@ class Themewire_Security_Scanner
 
         // High priority: Suspicious filenames
         $suspicious_patterns = array(
-            '/shell\d*\.php/i', '/cmd\.php/i', '/backdoor/i', '/malware/i',
-            '/hack/i', '/exploit/i', '/inject/i', '/bypass/i'
+            '/shell\d*\.php/i',
+            '/cmd\.php/i',
+            '/backdoor/i',
+            '/malware/i',
+            '/hack/i',
+            '/exploit/i',
+            '/inject/i',
+            '/bypass/i'
         );
         foreach ($suspicious_patterns as $pattern) {
             if (preg_match($pattern, $filename)) {
@@ -366,7 +407,7 @@ class Themewire_Security_Scanner
     private function get_prioritized_files($directory, $limit = 1000)
     {
         $files_to_scan = array();
-        
+
         if (!is_dir($directory)) {
             return $files_to_scan;
         }
@@ -381,7 +422,7 @@ class Themewire_Security_Scanner
                 if ($file->isFile()) {
                     $file_path = $file->getPathname();
                     $scan_decision = $this->should_scan_file($file_path);
-                    
+
                     if ($scan_decision['should_scan']) {
                         $files_to_scan[] = array(
                             'path' => $file_path,
@@ -406,7 +447,7 @@ class Themewire_Security_Scanner
         }
 
         // Sort by priority (lower numbers = higher priority)
-        usort($files_to_scan, function($a, $b) {
+        usort($files_to_scan, function ($a, $b) {
             if ($a['priority'] === $b['priority']) {
                 // If same priority, prioritize recently modified files
                 return $b['modified'] - $a['modified'];
@@ -431,10 +472,10 @@ class Themewire_Security_Scanner
         $start_time = time();
         $files_processed = 0;
         $max_files = $this->batch_size;
-        
+
         // Get the current stage directory
         $scan_directory = $this->get_stage_directory($scan_state['stage']);
-        
+
         if (!$scan_directory) {
             return array(
                 'success' => false,
@@ -444,7 +485,7 @@ class Themewire_Security_Scanner
 
         // Get prioritized files for this stage
         $prioritized_files = $this->get_prioritized_files($scan_directory, $max_files * 3);
-        
+
         if (empty($prioritized_files)) {
             return array(
                 'stage_complete' => true,
@@ -459,13 +500,13 @@ class Themewire_Security_Scanner
         // Process files starting from current offset
         $offset = isset($scan_state['batch_offset']) ? $scan_state['batch_offset'] : 0;
         $files_to_process = array_slice($prioritized_files, $offset, $max_files);
-        
+
         foreach ($files_to_process as $file_info) {
             // Check time limit
             if ((time() - $start_time) >= $this->chunk_time_limit) {
                 break;
             }
-            
+
             $this->scan_single_file($scan_id, $file_info['path'], $file_info['reason']);
             $files_processed++;
         }
@@ -474,10 +515,10 @@ class Themewire_Security_Scanner
         $total_files = count($prioritized_files);
         $processed_total = $offset + $files_processed;
         $progress = $total_files > 0 ? min(100, ($processed_total / $total_files) * 100) : 100;
-        
+
         // Determine if stage is complete
         $stage_complete = ($processed_total >= $total_files);
-        
+
         return array(
             'success' => true,
             'stage_complete' => $stage_complete,
@@ -487,10 +528,10 @@ class Themewire_Security_Scanner
             'continue' => true,
             'files_processed' => $files_processed,
             'message' => sprintf(
-                '%s: %d/%d files scanned (%d%% complete)', 
-                ucfirst($scan_state['stage']), 
-                $processed_total, 
-                $total_files, 
+                '%s: %d/%d files scanned (%d%% complete)',
+                ucfirst($scan_state['stage']),
+                $processed_total,
+                $total_files,
                 round($progress)
             )
         );
@@ -531,12 +572,12 @@ class Themewire_Security_Scanner
     {
         $stage_progression = array(
             'core' => 'plugins',
-            'plugins' => 'themes', 
+            'plugins' => 'themes',
             'themes' => 'uploads',
             'uploads' => 'ai_analysis',
             'ai_analysis' => 'completed'
         );
-        
+
         return isset($stage_progression[$current_stage]) ? $stage_progression[$current_stage] : 'completed';
     }
 
@@ -554,16 +595,16 @@ class Themewire_Security_Scanner
         try {
             // Perform the actual file analysis
             $analysis_result = $this->ai_analyzer->analyze_file($file_path);
-            
+
             // If malicious, record the issue
             if ($analysis_result['is_malware'] || (isset($analysis_result['is_malicious']) && $analysis_result['is_malicious'])) {
                 $confidence = isset($analysis_result['confidence']) ? $analysis_result['confidence'] : 50;
                 $explanation = isset($analysis_result['explanation']) ? $analysis_result['explanation'] : 'Malicious content detected';
                 $suggested_fix = isset($analysis_result['suggested_fix']) ? $analysis_result['suggested_fix'] : 'quarantine';
-                
+
                 // Determine severity based on confidence and indicators
                 $severity = $this->determine_severity($confidence, $reason, $file_path);
-                
+
                 $this->database->record_issue(
                     $scan_id,
                     $file_path,
@@ -577,7 +618,7 @@ class Themewire_Security_Scanner
                         'indicators' => isset($analysis_result['indicators']) ? $analysis_result['indicators'] : array()
                     ))
                 );
-                
+
                 if ($this->logger) {
                     $this->logger->warning('Malicious file detected', array(
                         'file' => $file_path,
@@ -586,11 +627,62 @@ class Themewire_Security_Scanner
                     ));
                 }
             }
-            
+
             return true;
         } catch (Exception $e) {
+            $error_message = $e->getMessage();
+            
+            // Handle AI service quota/rate limiting gracefully
+            if (strpos($error_message, 'quota') !== false || 
+                strpos($error_message, 'rate limited') !== false || 
+                strpos($error_message, 'temporarily unavailable') !== false) {
+                
+                if ($this->logger) {
+                    $this->logger->info('AI analysis unavailable for file, using pattern detection: ' . $file_path, array(
+                        'reason' => 'API quota/rate limit',
+                        'fallback' => 'pattern-based analysis'
+                    ));
+                }
+                
+                // Try pattern-based analysis as fallback
+                try {
+                    // Get file content and extension for fallback analysis
+                    $file_content = file_get_contents($file_path);
+                    $file_extension = pathinfo($file_path, PATHINFO_EXTENSION);
+                    
+                    $pattern_result = $this->ai_analyzer->analyze_with_fallback($file_path, $file_content, $file_extension);
+                    if ($pattern_result && isset($pattern_result['is_malware']) && $pattern_result['is_malware']) {
+                        // Record issue with pattern-based detection
+                        $this->database->record_issue(
+                            $scan_id,
+                            $file_path,
+                            'malware',
+                            'medium', // Default to medium severity for pattern detection
+                            $pattern_result['explanation'] ?? 'Malicious patterns detected',
+                            'quarantine',
+                            json_encode(array(
+                                'detection_method' => 'pattern-based',
+                                'scan_reason' => $reason,
+                                'ai_fallback' => true
+                            ))
+                        );
+                    }
+                    return true;
+                } catch (Exception $pattern_error) {
+                    // Even pattern analysis failed, log and continue
+                    if ($this->logger) {
+                        $this->logger->error('Both AI and pattern analysis failed for file: ' . $file_path, array(
+                            'ai_error' => $error_message,
+                            'pattern_error' => $pattern_error->getMessage()
+                        ));
+                    }
+                    return false;
+                }
+            }
+            
+            // Handle other errors
             if ($this->logger) {
-                $this->logger->error('Error scanning file: ' . $file_path, array('error' => $e->getMessage()));
+                $this->logger->error('Error scanning file: ' . $file_path, array('error' => $error_message));
             }
             return false;
         }
@@ -608,20 +700,24 @@ class Themewire_Security_Scanner
     private function determine_severity($confidence, $reason, $file_path)
     {
         // High severity conditions
-        if ($confidence >= 80 || 
+        if (
+            $confidence >= 80 ||
             strpos($reason, 'CRITICAL') !== false ||
             strpos($file_path, 'wp-content/uploads') !== false ||
-            strpos($reason, 'Hidden file') !== false) {
+            strpos($reason, 'Hidden file') !== false
+        ) {
             return 'high';
         }
-        
+
         // Medium severity conditions
-        if ($confidence >= 50 || 
+        if (
+            $confidence >= 50 ||
             strpos($reason, 'Suspicious') !== false ||
-            strpos($reason, 'Recently modified') !== false) {
+            strpos($reason, 'Recently modified') !== false
+        ) {
             return 'medium';
         }
-        
+
         // Default to low severity
         return 'low';
     }
@@ -1579,32 +1675,68 @@ class Themewire_Security_Scanner
             for ($j = $i; $j < $batch_end; $j++) {
                 $file = $files_for_analysis[$j];
 
-                $result = $this->ai_analyzer->analyze_file($file);
+                try {
+                    $result = $this->ai_analyzer->analyze_file($file);
 
-                if ($result['is_malware']) {
-                    $this->database->update_issue_status(
-                        $scan_id,
-                        $file,
-                        'confirmed',
-                        $result['explanation']
-                    );
-
-                    // Suggest fix if available
-                    if (!empty($result['suggested_fix'])) {
-                        $this->database->add_suggested_fix(
+                    if ($result['is_malware']) {
+                        $this->database->update_issue_status(
                             $scan_id,
                             $file,
-                            $result['suggested_fix']
+                            'confirmed',
+                            $result['explanation']
+                        );
+
+                        // Suggest fix if available
+                        if (!empty($result['suggested_fix'])) {
+                            $this->database->add_suggested_fix(
+                                $scan_id,
+                                $file,
+                                $result['suggested_fix']
+                            );
+                        }
+                    } else {
+                        // False positive
+                        $this->database->update_issue_status(
+                            $scan_id,
+                            $file,
+                            'false_positive',
+                            $result['explanation'] ?? 'AI analysis determined this is not malware'
                         );
                     }
-                } else {
-                    // False positive
-                    $this->database->update_issue_status(
-                        $scan_id,
-                        $file,
-                        'false_positive',
-                        $result['explanation']
-                    );
+                } catch (Exception $e) {
+                    $error_message = $e->getMessage();
+                    
+                    // Handle API quota/rate limiting
+                    if (strpos($error_message, 'quota') !== false || 
+                        strpos($error_message, 'rate limited') !== false || 
+                        strpos($error_message, 'temporarily unavailable') !== false) {
+                        
+                        if ($this->logger) {
+                            $this->logger->info('AI analysis unavailable for review, keeping original detection: ' . $file, array(
+                                'reason' => 'API quota/rate limit'
+                            ));
+                        }
+                        
+                        // Keep the original detection without AI confirmation
+                        $this->database->update_issue_status(
+                            $scan_id,
+                            $file,
+                            'pending',
+                            'AI analysis unavailable - manual review recommended'
+                        );
+                    } else {
+                        // Other errors - log and mark as needing review
+                        if ($this->logger) {
+                            $this->logger->error('Error during AI file review: ' . $file, array('error' => $error_message));
+                        }
+                        
+                        $this->database->update_issue_status(
+                            $scan_id,
+                            $file,
+                            'review_needed',
+                            'AI analysis failed - manual review required: ' . $error_message
+                        );
+                    }
                 }
             }
 

@@ -252,6 +252,44 @@ class Themewire_Security_Database
     }
 
     /**
+     * Record a security issue (alternative method name for add_issue)
+     *
+     * @since    1.0.27
+     * @param    int       $scan_id       The scan ID
+     * @param    string    $file_path     Path to the file
+     * @param    string    $issue_type    The type of issue
+     * @param    string    $severity      Issue severity (high, medium, low)
+     * @param    string    $description   Issue description
+     * @param    string    $suggested_fix Suggested fix
+     * @param    string    $metadata      Additional metadata as JSON (stored in ai_analysis field)
+     * @return   int       The issue ID
+     */
+    public function record_issue($scan_id, $file_path, $issue_type, $severity, $description, $suggested_fix = '', $metadata = '')
+    {
+        // Call the existing add_issue method with parameters in correct order
+        $issue_id = $this->add_issue($scan_id, $issue_type, $file_path, $description, $severity);
+        
+        if ($issue_id && $suggested_fix) {
+            $this->add_suggested_fix($scan_id, $file_path, $suggested_fix);
+        }
+        
+        // Store metadata in ai_analysis field if provided
+        if ($issue_id && $metadata) {
+            global $wpdb;
+            $table_issues = $wpdb->prefix . 'twss_issues';
+            $wpdb->update(
+                $table_issues,
+                array('ai_analysis' => $metadata),
+                array('id' => $issue_id),
+                array('%s'),
+                array('%d')
+            );
+        }
+        
+        return $issue_id;
+    }
+
+    /**
      * Update issue status
      *
      * @since    1.0.0
