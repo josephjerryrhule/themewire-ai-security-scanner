@@ -1087,7 +1087,7 @@ class Themewire_Security_AI_Analyzer
         );
 
         $data = array(
-            'model' => 'meta-llama/llama-3.1-8b-instruct:free', // Using a free model, can be configured
+            'model' => get_option('twss_openrouter_model', 'meta-llama/llama-3.1-8b-instruct:free'), // Configurable model
             'messages' => array(
                 array(
                     'role' => 'system',
@@ -1678,5 +1678,164 @@ class Themewire_Security_AI_Analyzer
         }
 
         return $providers;
+    }
+
+    /**
+     * Get available OpenRouter models
+     *
+     * @since    1.0.29
+     * @return   array     List of available OpenRouter models
+     */
+    public function get_openrouter_models()
+    {
+        return array(
+            // Free models
+            'meta-llama/llama-3.1-8b-instruct:free' => array(
+                'name' => 'Llama 3.1 8B Instruct (Free)',
+                'description' => 'Fast and efficient model, good for security analysis',
+                'cost' => 'Free',
+                'context' => '128k tokens'
+            ),
+            'microsoft/wizardlm-2-8x22b:free' => array(
+                'name' => 'WizardLM-2 8x22B (Free)',
+                'description' => 'High-quality reasoning model',
+                'cost' => 'Free',
+                'context' => '65k tokens'
+            ),
+            'google/gemma-2-9b-it:free' => array(
+                'name' => 'Gemma 2 9B IT (Free)',
+                'description' => 'Google\'s open model, good performance',
+                'cost' => 'Free',
+                'context' => '8k tokens'
+            ),
+            
+            // Paid models (better performance)
+            'openai/gpt-4o-mini' => array(
+                'name' => 'GPT-4o Mini',
+                'description' => 'OpenAI\'s efficient model with great security analysis',
+                'cost' => '$0.15/1M input, $0.60/1M output',
+                'context' => '128k tokens'
+            ),
+            'openai/gpt-4-turbo' => array(
+                'name' => 'GPT-4 Turbo',
+                'description' => 'OpenAI\'s most capable model',
+                'cost' => '$10/1M input, $30/1M output',
+                'context' => '128k tokens'
+            ),
+            'anthropic/claude-3-haiku' => array(
+                'name' => 'Claude 3 Haiku',
+                'description' => 'Fast and accurate, excellent for code analysis',
+                'cost' => '$0.25/1M input, $1.25/1M output',
+                'context' => '200k tokens'
+            ),
+            'anthropic/claude-3-5-sonnet' => array(
+                'name' => 'Claude 3.5 Sonnet',
+                'description' => 'Top-tier performance for complex security analysis',
+                'cost' => '$3/1M input, $15/1M output',
+                'context' => '200k tokens'
+            ),
+            'google/gemini-pro-1.5' => array(
+                'name' => 'Gemini Pro 1.5',
+                'description' => 'Google\'s advanced model with large context',
+                'cost' => '$2.50/1M input, $10/1M output',
+                'context' => '2M tokens'
+            )
+        );
+    }
+
+    /**
+     * Test OpenRouter API with specific model
+     *
+     * @since    1.0.29
+     * @param    string    $api_key    The OpenRouter API key to test
+     * @param    string    $model      The model to test (optional)
+     * @return   array                 Success status and message
+     */
+    public function test_openrouter_api_with_model($api_key, $model = 'meta-llama/llama-3.1-8b-instruct:free')
+    {
+        try {
+            $data = array(
+                'model' => $model,
+                'messages' => array(
+                    array(
+                        'role' => 'user',
+                        'content' => 'Say "API connection successful with ' . $model . '" if you can read this message.'
+                    )
+                ),
+                'max_tokens' => 20
+            );
+
+            $headers = array(
+                'Content-Type: application/json',
+                'Authorization: Bearer ' . $api_key,
+                'HTTP-Referer: https://yourdomain.com',
+                'X-Title: Themewire Security Scanner Test'
+            );
+
+            $curl = curl_init();
+            curl_setopt($curl, CURLOPT_URL, 'https://openrouter.ai/api/v1/chat/completions');
+            curl_setopt($curl, CURLOPT_RETURNTRANSFER, true);
+            curl_setopt($curl, CURLOPT_TIMEOUT, 15);
+            curl_setopt($curl, CURLOPT_POST, true);
+            curl_setopt($curl, CURLOPT_POSTFIELDS, json_encode($data));
+            curl_setopt($curl, CURLOPT_HTTPHEADER, $headers);
+
+            $response = curl_exec($curl);
+            $status = curl_getinfo($curl, CURLINFO_HTTP_CODE);
+            $err = curl_error($curl);
+            curl_close($curl);
+
+            if ($err) {
+                return array(
+                    'success' => false,
+                    'message' => 'cURL Error: ' . $err
+                );
+            }
+
+            if ($status !== 200) {
+                $error_data = json_decode($response, true);
+                if (isset($error_data['error'])) {
+                    $error_msg = $error_data['error']['message'] ?? 'Unknown API error';
+                    
+                    // Handle specific model errors
+                    if (strpos($error_msg, 'model') !== false) {
+                        return array(
+                            'success' => false,
+                            'message' => 'Model "' . $model . '" is not available or accessible with your API key. ' . $error_msg
+                        );
+                    }
+                    
+                    return array(
+                        'success' => false,
+                        'message' => $error_msg
+                    );
+                }
+                
+                return array(
+                    'success' => false,
+                    'message' => 'API returned status code ' . $status
+                );
+            }
+
+            $response_data = json_decode($response, true);
+            if (isset($response_data['choices'][0]['message']['content'])) {
+                return array(
+                    'success' => true,
+                    'message' => 'OpenRouter API key is valid and model "' . $model . '" is accessible!',
+                    'model_response' => $response_data['choices'][0]['message']['content']
+                );
+            }
+
+            return array(
+                'success' => false,
+                'message' => 'Unexpected API response format'
+            );
+
+        } catch (Exception $e) {
+            return array(
+                'success' => false,
+                'message' => $e->getMessage()
+            );
+        }
     }
 }

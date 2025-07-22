@@ -220,6 +220,243 @@ class Themewire_Security_Scanner
     }
 
     /**
+     * Start optimized progressive scan with real-time updates
+     *
+     * @since    1.0.29
+     * @return   array    Scan initialization result
+     */
+    public function start_optimized_scan()
+    {
+        // Check if scan already running
+        if ($this->is_scan_in_progress()) {
+            $last_activity = get_transient('twss_scan_last_activity');
+            if ($last_activity && (time() - $last_activity) > 3600) {
+                // Reset stuck scan
+                $this->reset_scan_state();
+                if ($this->logger) {
+                    $this->logger->warning('Detected stuck scan, resetting scan status');
+                }
+            } else {
+                return array(
+                    'success' => false,
+                    'message' => __('A scan is already in progress', 'themewire-security')
+                );
+            }
+        }
+
+        if ($this->logger) {
+            $this->logger->info('Starting optimized progressive security scan');
+        }
+
+        // Set scan in progress
+        $this->set_scan_in_progress(true);
+        $this->update_scan_activity();
+
+        // Clean up ghost issues
+        $ghost_count = $this->database->cleanup_ghost_issues();
+        if ($ghost_count > 0 && $this->logger) {
+            $this->logger->info("Cleaned up {$ghost_count} ghost issues before starting scan");
+        }
+
+        $scan_id = $this->database->create_new_scan_record();
+
+        // Pre-calculate total files for accurate progress tracking
+        $file_inventory = $this->calculate_scan_inventory();
+        
+        // Initialize optimized scan state
+        $scan_state = array(
+            'scan_id' => $scan_id,
+            'stage' => 'critical_files',
+            'stage_progress' => 0,
+            'files_scanned' => 0,
+            'total_files' => $file_inventory['total_files'],
+            'stage_totals' => $file_inventory['stage_totals'],
+            'current_directory' => '',
+            'started' => time(),
+            'last_update' => time()
+        );
+
+        // Store scan state
+        set_transient('twss_optimized_scan_state', $scan_state, DAY_IN_SECONDS);
+        update_option('twss_current_scan_id', $scan_id);
+
+        // Update initial progress with file counts
+        $this->database->update_scan_progress(
+            $scan_id, 
+            'initializing', 
+            0, 
+            sprintf(__('Scan initialized: %d total files found', 'themewire-security'), $file_inventory['total_files'])
+        );
+
+        return array(
+            'success' => true,
+            'scan_id' => $scan_id,
+            'total_files' => $file_inventory['total_files'],
+            'stage_breakdown' => $file_inventory['stage_totals'],
+            'optimized' => true,
+            'message' => sprintf(__('Optimized scan initialized: %d files queued for scanning', 'themewire-security'), $file_inventory['total_files'])
+        );
+    }
+
+    /**
+     * Calculate comprehensive file inventory for progress tracking
+     *
+     * @since    1.0.29
+     * @return   array    File inventory with totals and breakdown
+     */
+    private function calculate_scan_inventory()
+    {
+        $inventory = array(
+            'total_files' => 0,
+            'stage_totals' => array(
+                'critical_files' => 0,
+                'core_files' => 0,
+                'plugins' => 0,
+                'themes' => 0,
+                'uploads' => 0
+            ),
+            'directories' => array()
+        );
+
+        // 1. Critical files (uploads PHP, suspicious files)
+        $critical_files = $this->find_critical_files();
+        $inventory['stage_totals']['critical_files'] = count($critical_files);
+        $inventory['total_files'] += count($critical_files);
+
+        // 2. Core files (sample only for speed)
+        $core_files = $this->find_sample_core_files();
+        $inventory['stage_totals']['core_files'] = count($core_files);
+        $inventory['total_files'] += count($core_files);
+
+        // 3. Active plugins
+        $plugin_files = $this->find_active_plugin_files();
+        $inventory['stage_totals']['plugins'] = count($plugin_files);
+        $inventory['total_files'] += count($plugin_files);
+
+        // 4. Active themes
+        $theme_files = $this->find_active_theme_files();
+        $inventory['stage_totals']['themes'] = count($theme_files);
+        $inventory['total_files'] += count($theme_files);
+
+        // 5. Uploads directory (PHP files only)
+        $upload_files = $this->find_suspicious_uploads();
+        $inventory['stage_totals']['uploads'] = count($upload_files);
+        $inventory['total_files'] += count($upload_files);
+
+        return $inventory;
+    }
+
+    /**
+     * Process optimized scan chunk with real-time progress
+     *
+     * @since    1.0.29
+     * @return   array    Processing result with detailed progress
+     */
+    public function process_optimized_scan_chunk()
+    {
+        $scan_state = get_transient('twss_optimized_scan_state');
+        if (!$scan_state) {
+            return array(
+                'success' => false,
+                'message' => __('No active scan found', 'themewire-security')
+            );
+        }
+
+        $this->update_scan_activity();
+        $start_time = time();
+        $files_processed = 0;
+        $max_files_per_chunk = 15; // Smaller chunks for faster updates
+        $max_time_per_chunk = 15; // 15 seconds max per chunk
+
+        $scan_id = $scan_state['scan_id'];
+        $stage = $scan_state['stage'];
+
+        // Get files for current stage
+        $files_to_scan = $this->get_files_for_stage($stage, $scan_state);
+
+        if (empty($files_to_scan)) {
+            // Move to next stage
+            $next_stage = $this->get_next_scan_stage($stage);
+            if ($next_stage) {
+                $scan_state['stage'] = $next_stage;
+                $scan_state['current_directory'] = '';
+                set_transient('twss_optimized_scan_state', $scan_state, DAY_IN_SECONDS);
+                
+                return array(
+                    'success' => true,
+                    'stage_completed' => $stage,
+                    'next_stage' => $next_stage,
+                    'progress' => $this->calculate_overall_progress($scan_state),
+                    'continue' => true,
+                    'message' => sprintf(__('Completed %s scan, moving to %s', 'themewire-security'), $stage, $next_stage)
+                );
+            } else {
+                // Scan completed
+                return $this->finalize_optimized_scan($scan_state);
+            }
+        }
+
+        // Process files with time and count limits
+        $issues_found = 0;
+        foreach ($files_to_scan as $file_info) {
+            if ($files_processed >= $max_files_per_chunk || (time() - $start_time) >= $max_time_per_chunk) {
+                break;
+            }
+
+            $file_path = is_array($file_info) ? $file_info['path'] : $file_info;
+            $directory = dirname($file_path);
+
+            // Update current directory for UI display
+            if ($scan_state['current_directory'] !== $directory) {
+                $scan_state['current_directory'] = $directory;
+            }
+
+            // Scan the file
+            $scan_result = $this->scan_file_optimized($scan_id, $file_path, $stage);
+            if ($scan_result && isset($scan_result['issues_found'])) {
+                $issues_found += $scan_result['issues_found'];
+            }
+
+            $files_processed++;
+            $scan_state['files_scanned']++;
+        }
+
+        // Update scan state
+        $scan_state['last_update'] = time();
+        set_transient('twss_optimized_scan_state', $scan_state, DAY_IN_SECONDS);
+
+        // Calculate progress
+        $overall_progress = $this->calculate_overall_progress($scan_state);
+        $stage_progress = $this->calculate_stage_progress($scan_state);
+
+        // Update database progress
+        $progress_message = sprintf(
+            __('Scanning %s: %d/%d files (%d%% complete) - %s', 'themewire-security'),
+            ucfirst(str_replace('_', ' ', $stage)),
+            $scan_state['files_scanned'],
+            $scan_state['total_files'],
+            $overall_progress,
+            basename($scan_state['current_directory'])
+        );
+
+        $this->database->update_scan_progress($scan_id, $stage, $stage_progress, $progress_message);
+
+        return array(
+            'success' => true,
+            'files_processed' => $files_processed,
+            'files_scanned' => $scan_state['files_scanned'],
+            'total_files' => $scan_state['total_files'],
+            'overall_progress' => $overall_progress,
+            'stage_progress' => $stage_progress,
+            'current_stage' => $stage,
+            'current_directory' => basename($scan_state['current_directory']),
+            'issues_found' => $issues_found,
+            'continue' => true,
+            'message' => $progress_message
+        );
+    }
+
+    /**
      * Initialize the intelligent scanning system
      *
      * @since    1.0.27
@@ -2931,6 +3168,490 @@ class Themewire_Security_Scanner
             'progress' => 100,
             'next_offset' => 0,
             'message' => __('AI analysis completed', 'themewire-security')
+        );
+    }
+
+    // =======================
+    // OPTIMIZED SCANNING HELPER METHODS
+    // =======================
+
+    /**
+     * Reset scan state completely
+     *
+     * @since    1.0.29
+     */
+    private function reset_scan_state()
+    {
+        delete_transient('twss_scan_in_progress');
+        delete_transient('twss_scan_last_activity');
+        delete_transient('twss_chunked_scan_state');
+        delete_transient('twss_optimized_scan_state');
+    }
+
+    /**
+     * Find critical files that need immediate scanning
+     *
+     * @since    1.0.29
+     * @return   array    Array of critical file paths
+     */
+    private function find_critical_files()
+    {
+        $critical_files = array();
+
+        // 1. PHP files in uploads directory (highest priority)
+        $uploads_dir = wp_upload_dir();
+        if (isset($uploads_dir['basedir']) && is_dir($uploads_dir['basedir'])) {
+            $upload_php_files = $this->find_files_by_extension($uploads_dir['basedir'], array('php', 'phtml', 'php3', 'php4', 'php5'));
+            $critical_files = array_merge($critical_files, $upload_php_files);
+        }
+
+        // 2. Hidden files and suspicious filenames
+        $suspicious_patterns = array('.htaccess', 'wp-config.php', 'index.php');
+        $wp_root = ABSPATH;
+        
+        foreach ($suspicious_patterns as $pattern) {
+            $files = glob($wp_root . '*' . $pattern);
+            foreach ($files as $file) {
+                if (is_file($file) && $this->is_suspicious_location($file, basename($file))) {
+                    $critical_files[] = $file;
+                }
+            }
+        }
+
+        // 3. Recently modified files (last 30 days)
+        $recent_files = $this->find_recently_modified_files($wp_root, 30);
+        $critical_files = array_merge($critical_files, $recent_files);
+
+        return array_unique($critical_files);
+    }
+
+    /**
+     * Find sample core files for scanning (not all core files for speed)
+     *
+     * @since    1.0.29
+     * @return   array    Array of core file paths
+     */
+    private function find_sample_core_files()
+    {
+        $core_files = array();
+        $wp_root = ABSPATH;
+
+        // Key WordPress core files that are often targeted
+        $key_files = array(
+            'wp-config.php',
+            'wp-load.php',
+            'wp-blog-header.php',
+            'index.php',
+            '.htaccess'
+        );
+
+        foreach ($key_files as $file) {
+            $full_path = $wp_root . $file;
+            if (is_file($full_path)) {
+                $core_files[] = $full_path;
+            }
+        }
+
+        // Sample from wp-includes and wp-admin (not all files)
+        $includes_files = glob($wp_root . 'wp-includes/*.php');
+        if ($includes_files) {
+            $core_files = array_merge($core_files, array_slice($includes_files, 0, 20)); // First 20 files
+        }
+
+        $admin_files = glob($wp_root . 'wp-admin/*.php');
+        if ($admin_files) {
+            $core_files = array_merge($core_files, array_slice($admin_files, 0, 15)); // First 15 files
+        }
+
+        return $core_files;
+    }
+
+    /**
+     * Find active plugin files only
+     *
+     * @since    1.0.29
+     * @return   array    Array of active plugin file paths
+     */
+    private function find_active_plugin_files()
+    {
+        $plugin_files = array();
+        $plugin_dir = WP_PLUGIN_DIR;
+
+        if (!is_dir($plugin_dir)) {
+            return array();
+        }
+
+        // Get only active plugins
+        $active_plugins = get_option('active_plugins', array());
+        
+        foreach ($active_plugins as $plugin) {
+            $plugin_path = $plugin_dir . '/' . dirname($plugin);
+            if (is_dir($plugin_path)) {
+                $files = $this->find_files_by_extension($plugin_path, $this->priority_extensions, 50); // Limit per plugin
+                $plugin_files = array_merge($plugin_files, $files);
+            }
+        }
+
+        // Add network plugins for multisite
+        if (is_multisite()) {
+            $network_plugins = get_site_option('active_sitewide_plugins', array());
+            foreach (array_keys($network_plugins) as $plugin) {
+                $plugin_path = $plugin_dir . '/' . dirname($plugin);
+                if (is_dir($plugin_path)) {
+                    $files = $this->find_files_by_extension($plugin_path, $this->priority_extensions, 50);
+                    $plugin_files = array_merge($plugin_files, $files);
+                }
+            }
+        }
+
+        return array_unique($plugin_files);
+    }
+
+    /**
+     * Find active theme files only
+     *
+     * @since    1.0.29
+     * @return   array    Array of active theme file paths
+     */
+    private function find_active_theme_files()
+    {
+        $theme_files = array();
+        $themes_dir = get_theme_root();
+
+        if (!is_dir($themes_dir)) {
+            return array();
+        }
+
+        // Get active theme
+        $active_theme = wp_get_theme();
+        $active_theme_path = $themes_dir . '/' . $active_theme->get_stylesheet();
+        
+        if (is_dir($active_theme_path)) {
+            $files = $this->find_files_by_extension($active_theme_path, $this->priority_extensions, 100);
+            $theme_files = array_merge($theme_files, $files);
+        }
+
+        // Add parent theme if child theme is active
+        if ($active_theme->parent()) {
+            $parent_theme_path = $themes_dir . '/' . $active_theme->get_template();
+            if (is_dir($parent_theme_path)) {
+                $files = $this->find_files_by_extension($parent_theme_path, $this->priority_extensions, 100);
+                $theme_files = array_merge($theme_files, $files);
+            }
+        }
+
+        return array_unique($theme_files);
+    }
+
+    /**
+     * Find suspicious uploads (PHP files, executable files)
+     *
+     * @since    1.0.29
+     * @return   array    Array of suspicious upload file paths
+     */
+    private function find_suspicious_uploads()
+    {
+        $uploads_dir = wp_upload_dir();
+        if (!isset($uploads_dir['basedir']) || !is_dir($uploads_dir['basedir'])) {
+            return array();
+        }
+
+        // Find PHP and other executable files
+        $suspicious_extensions = array('php', 'phtml', 'php3', 'php4', 'php5', 'php7', 'php8', 'js', 'html', 'htm');
+        return $this->find_files_by_extension($uploads_dir['basedir'], $suspicious_extensions);
+    }
+
+    /**
+     * Find files by extension with optional limit
+     *
+     * @since    1.0.29
+     * @param    string    $directory    Directory to search
+     * @param    array     $extensions   File extensions to find
+     * @param    int       $limit        Optional limit on number of files
+     * @return   array     Array of file paths
+     */
+    private function find_files_by_extension($directory, $extensions, $limit = 0)
+    {
+        $files = array();
+        $count = 0;
+
+        if (!is_dir($directory)) {
+            return array();
+        }
+
+        $iterator = new RecursiveIteratorIterator(
+            new RecursiveDirectoryIterator($directory, RecursiveDirectoryIterator::SKIP_DOTS),
+            RecursiveIteratorIterator::SELF_FIRST
+        );
+
+        foreach ($iterator as $file) {
+            if ($limit > 0 && $count >= $limit) {
+                break;
+            }
+
+            if ($file->isFile()) {
+                $extension = strtolower($file->getExtension());
+                if (in_array($extension, $extensions)) {
+                    $files[] = $file->getPathname();
+                    $count++;
+                }
+            }
+        }
+
+        return $files;
+    }
+
+    /**
+     * Find recently modified files
+     *
+     * @since    1.0.29
+     * @param    string    $directory    Directory to search
+     * @param    int       $days         Number of days to look back
+     * @return   array     Array of recently modified file paths
+     */
+    private function find_recently_modified_files($directory, $days = 30)
+    {
+        $recent_files = array();
+        $cutoff_time = time() - ($days * 24 * 60 * 60);
+
+        if (!is_dir($directory)) {
+            return array();
+        }
+
+        $iterator = new RecursiveIteratorIterator(
+            new RecursiveDirectoryIterator($directory, RecursiveDirectoryIterator::SKIP_DOTS),
+            RecursiveIteratorIterator::SELF_FIRST
+        );
+
+        $count = 0;
+        foreach ($iterator as $file) {
+            if ($count >= 100) { // Limit for performance
+                break;
+            }
+
+            if ($file->isFile() && $file->getMTime() > $cutoff_time) {
+                $extension = strtolower($file->getExtension());
+                if (in_array($extension, $this->priority_extensions)) {
+                    $recent_files[] = $file->getPathname();
+                    $count++;
+                }
+            }
+        }
+
+        return $recent_files;
+    }
+
+    /**
+     * Check if file is in suspicious location
+     *
+     * @since    1.0.29
+     * @param    string    $file_path    File path
+     * @param    string    $filename     Filename
+     * @return   boolean   True if suspicious
+     */
+    private function is_suspicious_location($file_path, $filename)
+    {
+        // Files in uploads directory
+        if (strpos($file_path, 'wp-content/uploads') !== false) {
+            return true;
+        }
+
+        // Hidden files
+        if ($filename[0] === '.') {
+            return true;
+        }
+
+        // Duplicate core files in wrong locations
+        $suspicious_files = array('wp-config.php', 'index.php', '.htaccess');
+        if (in_array($filename, $suspicious_files)) {
+            // Check if it's not in the expected location
+            if (!strpos($file_path, ABSPATH . $filename)) {
+                return true;
+            }
+        }
+
+        return false;
+    }
+
+    /**
+     * Get files for current scan stage
+     *
+     * @since    1.0.29
+     * @param    string    $stage       Current stage
+     * @param    array     $scan_state  Current scan state
+     * @return   array     Files to scan
+     */
+    private function get_files_for_stage($stage, $scan_state)
+    {
+        $files_per_batch = 15;
+        $offset = isset($scan_state['stage_offset']) ? $scan_state['stage_offset'] : 0;
+
+        switch ($stage) {
+            case 'critical_files':
+                $files = $this->find_critical_files();
+                break;
+            case 'core_files':
+                $files = $this->find_sample_core_files();
+                break;
+            case 'plugins':
+                $files = $this->find_active_plugin_files();
+                break;
+            case 'themes':
+                $files = $this->find_active_theme_files();
+                break;
+            case 'uploads':
+                $files = $this->find_suspicious_uploads();
+                break;
+            default:
+                return array();
+        }
+
+        // Return slice of files for this batch
+        return array_slice($files, $offset, $files_per_batch);
+    }
+
+    /**
+     * Get next scan stage
+     *
+     * @since    1.0.29
+     * @param    string    $current_stage    Current stage
+     * @return   string|null    Next stage or null if completed
+     */
+    private function get_next_scan_stage($current_stage)
+    {
+        $stages = array('critical_files', 'core_files', 'plugins', 'themes', 'uploads');
+        $current_index = array_search($current_stage, $stages);
+        
+        if ($current_index === false || $current_index >= count($stages) - 1) {
+            return null; // No more stages
+        }
+
+        return $stages[$current_index + 1];
+    }
+
+    /**
+     * Calculate overall progress percentage
+     *
+     * @since    1.0.29
+     * @param    array    $scan_state    Current scan state
+     * @return   int      Progress percentage
+     */
+    private function calculate_overall_progress($scan_state)
+    {
+        if ($scan_state['total_files'] == 0) {
+            return 0;
+        }
+
+        return min(100, intval(($scan_state['files_scanned'] / $scan_state['total_files']) * 100));
+    }
+
+    /**
+     * Calculate stage progress percentage
+     *
+     * @since    1.0.29
+     * @param    array    $scan_state    Current scan state
+     * @return   int      Stage progress percentage
+     */
+    private function calculate_stage_progress($scan_state)
+    {
+        $stage = $scan_state['stage'];
+        $stage_totals = $scan_state['stage_totals'];
+        
+        if (!isset($stage_totals[$stage]) || $stage_totals[$stage] == 0) {
+            return 100;
+        }
+
+        $stage_offset = isset($scan_state['stage_offset']) ? $scan_state['stage_offset'] : 0;
+        return min(100, intval(($stage_offset / $stage_totals[$stage]) * 100));
+    }
+
+    /**
+     * Optimized file scanning method
+     *
+     * @since    1.0.29
+     * @param    int       $scan_id     Scan ID
+     * @param    string    $file_path   File path
+     * @param    string    $stage       Current stage
+     * @return   array     Scan result
+     */
+    private function scan_file_optimized($scan_id, $file_path, $stage)
+    {
+        if (!file_exists($file_path) || !is_readable($file_path)) {
+            return array('success' => false, 'issues_found' => 0);
+        }
+
+        // Skip large files for speed
+        if (filesize($file_path) > 5 * 1024 * 1024) { // 5MB limit
+            return array('success' => true, 'issues_found' => 0, 'skipped' => 'file_too_large');
+        }
+
+        $results = array();
+        
+        // Quick malware scan
+        $malware_result = $this->scan_file_for_malware($file_path);
+        if (!empty($malware_result['issues'])) {
+            foreach ($malware_result['issues'] as $issue) {
+                $metadata = json_encode(array(
+                    'line_number' => isset($issue['line_number']) ? $issue['line_number'] : 0,
+                    'code_snippet' => isset($issue['code_snippet']) ? $issue['code_snippet'] : '',
+                    'detection_type' => 'malware',
+                    'stage' => $stage
+                ));
+                
+                $this->database->record_issue(
+                    $scan_id,
+                    $file_path,
+                    'malware',
+                    $issue['severity'],
+                    $issue['description'],
+                    '',
+                    $metadata
+                );
+            }
+            $results = array_merge($results, $malware_result['issues']);
+        }
+
+        return array(
+            'success' => true,
+            'issues_found' => count($results),
+            'issues' => $results
+        );
+    }
+
+    /**
+     * Finalize optimized scan
+     *
+     * @since    1.0.29
+     * @param    array    $scan_state    Current scan state
+     * @return   array    Finalization result
+     */
+    private function finalize_optimized_scan($scan_state)
+    {
+        $scan_id = $scan_state['scan_id'];
+
+        // Mark scan as completed
+        $this->database->update_scan_status($scan_id, 'completed');
+        $this->set_scan_in_progress(false);
+
+        // Clean up transients
+        delete_transient('twss_optimized_scan_state');
+
+        // Get scan summary
+        $summary = $this->database->get_scan_summary($scan_id);
+
+        return array(
+            'success' => true,
+            'scan_id' => $scan_id,
+            'stage' => 'completed',
+            'progress' => 100,
+            'files_scanned' => $scan_state['files_scanned'],
+            'total_files' => $scan_state['total_files'],
+            'message' => sprintf(__('Scan completed! Scanned %d files in %d seconds.', 'themewire-security'), 
+                $scan_state['files_scanned'], 
+                time() - $scan_state['started']
+            ),
+            'continue' => false,
+            'summary' => $summary
         );
     }
 }
