@@ -2890,4 +2890,57 @@
       });
     }
   }
+
+  // Test OpenRouter API Key
+  $(document).on("click", "#test-openrouter-api", function (e) {
+    e.preventDefault();
+    var button = $(this);
+    var apiKey = $("#twss_openrouter_api_key").val();
+    var statusSpan = $("#openrouter-api-status");
+
+    if (!apiKey) {
+      statusSpan.html(
+        '<span style="color: #d63638;">Please enter an API key first</span>'
+      );
+      return;
+    }
+
+    button.prop("disabled", true).text("Testing...");
+    statusSpan.html(
+      '<span style="color: #FF7342;">Testing connection...</span>'
+    );
+
+    $.ajax({
+      url: twss_data.ajax_url,
+      type: "POST",
+      data: {
+        action: "twss_test_openrouter_api",
+        api_key: apiKey,
+        nonce: twss_data.nonce,
+      },
+      success: function (response) {
+        if (response.success) {
+          statusSpan.html(
+            '<span style="color: #46b450;">✓ ' +
+              response.data.message +
+              "</span>"
+          );
+        } else {
+          statusSpan.html(
+            '<span style="color: #d63638;">✗ ' +
+              response.data.message +
+              "</span>"
+          );
+        }
+      },
+      error: function () {
+        statusSpan.html(
+          '<span style="color: #d63638;">✗ Connection failed</span>'
+        );
+      },
+      complete: function () {
+        button.prop("disabled", false).text("Test API Key");
+      },
+    });
+  });
 })(jQuery);

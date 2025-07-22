@@ -133,6 +133,7 @@ class Themewire_Security
         add_action('wp_ajax_twss_delete_file', array($plugin_admin, 'ajax_delete_file'));
         add_action('wp_ajax_twss_test_openai_api', array($plugin_admin, 'ajax_test_openai_api'));
         add_action('wp_ajax_twss_test_gemini_api', array($plugin_admin, 'ajax_test_gemini_api'));
+        add_action('wp_ajax_twss_test_openrouter_api', array($plugin_admin, 'ajax_test_openrouter_api'));
         add_action('wp_ajax_twss_disconnect_oauth', array($plugin_admin, 'ajax_disconnect_oauth'));
         add_action('wp_ajax_twss_get_oauth_url', array($plugin_admin, 'ajax_get_oauth_url'));
         add_action('wp_ajax_twss_clear_all_issues', array($plugin_admin, 'ajax_clear_all_issues'));

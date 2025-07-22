@@ -1185,24 +1185,24 @@ class Themewire_Security_AI_Analyzer
                 $error_code = isset($error['code']) ? $error['code'] : 0;
                 $error_message = isset($error['message']) ? $error['message'] : 'Unknown API error';
                 $error_type = isset($error['type']) ? $error['type'] : 'UNKNOWN';
-                
+
                 // Handle quota/credit exhausted errors
                 if ($error_code === 429 || strpos($error_message, 'quota') !== false || strpos($error_message, 'credit') !== false) {
                     error_log('OpenRouter API Quota/Credits Exhausted - Falling back to pattern-based analysis');
                     throw new Exception('AI analysis temporarily unavailable due to quota limits. Using pattern-based analysis instead.');
                 }
-                
+
                 // Handle rate limiting
                 if ($error_code === 429) {
                     error_log('OpenRouter API Rate Limited - Retrying with pattern analysis');
                     throw new Exception('AI service rate limited. Falling back to pattern analysis.');
                 }
-                
+
                 // Handle other API errors with sanitized messages
                 error_log("OpenRouter API Error [{$error_code}]: {$error_message}");
                 throw new Exception("AI analysis service error. Using pattern-based detection instead.");
             }
-            
+
             // Log for debugging
             error_log('OpenRouter API: Invalid response structure received');
             throw new Exception('AI service returned invalid response. Using fallback analysis.');
@@ -1546,6 +1546,80 @@ class Themewire_Security_AI_Analyzer
             return array(
                 'success' => true,
                 'message' => 'Google Gemini API key is valid and working!'
+            );
+        } catch (Exception $e) {
+            return array(
+                'success' => false,
+                'message' => $e->getMessage()
+            );
+        }
+    }
+
+    /**
+     * Test OpenRouter API key
+     *
+     * @since    1.0.1
+     * @param    string    $api_key    The OpenRouter API key to test
+     * @return   array                 Success status and message
+     */
+    public function test_openrouter_api_key($api_key)
+    {
+        try {
+            $data = array(
+                'model' => 'openai/gpt-3.5-turbo',
+                'messages' => array(
+                    array(
+                        'role' => 'user',
+                        'content' => 'Test connection - please respond with "API test successful"'
+                    )
+                ),
+                'max_tokens' => 10
+            );
+
+            $headers = array(
+                'Content-Type: application/json',
+                'Authorization: Bearer ' . $api_key,
+                'X-Title: Themewire Security Scanner Test'
+            );
+
+            $curl = curl_init();
+
+            curl_setopt($curl, CURLOPT_URL, 'https://openrouter.ai/api/v1/chat/completions');
+            curl_setopt($curl, CURLOPT_RETURNTRANSFER, true);
+            curl_setopt($curl, CURLOPT_ENCODING, '');
+            curl_setopt($curl, CURLOPT_MAXREDIRS, 10);
+            curl_setopt($curl, CURLOPT_TIMEOUT, 10);
+            curl_setopt($curl, CURLOPT_FOLLOWLOCATION, true);
+            curl_setopt($curl, CURLOPT_HTTP_VERSION, CURL_HTTP_VERSION_1_1);
+            curl_setopt($curl, CURLOPT_CUSTOMREQUEST, 'POST');
+            curl_setopt($curl, CURLOPT_POSTFIELDS, json_encode($data));
+            curl_setopt($curl, CURLOPT_HTTPHEADER, $headers);
+
+            $response = curl_exec($curl);
+            $status = curl_getinfo($curl, CURLINFO_HTTP_CODE);
+            $err = curl_error($curl);
+
+            curl_close($curl);
+
+            if ($err) {
+                return array(
+                    'success' => false,
+                    'message' => 'cURL Error: ' . $err
+                );
+            }
+
+            if ($status !== 200) {
+                $error_data = json_decode($response, true);
+                $error_msg = isset($error_data['error']['message']) ? $error_data['error']['message'] : 'API returned status code ' . $status;
+                return array(
+                    'success' => false,
+                    'message' => $error_msg
+                );
+            }
+
+            return array(
+                'success' => true,
+                'message' => 'OpenRouter API key is valid and working!'
             );
         } catch (Exception $e) {
             return array(

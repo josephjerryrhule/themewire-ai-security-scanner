@@ -230,6 +230,34 @@ class Themewire_Security_Admin
     }
 
     /**
+     * AJAX handler for testing OpenRouter API key
+     *
+     * @since    1.0.1
+     */
+    public function ajax_test_openrouter_api()
+    {
+        check_ajax_referer('twss_nonce', 'nonce');
+
+        if (!current_user_can('manage_options')) {
+            wp_send_json_error(__('You do not have permission to perform this action', 'themewire-security'));
+        }
+
+        $api_key = isset($_POST['api_key']) ? sanitize_text_field($_POST['api_key']) : '';
+
+        if (empty($api_key)) {
+            wp_send_json_error(__('API key cannot be empty', 'themewire-security'));
+        }
+
+        $result = $this->ai_analyzer->test_openrouter_api_key($api_key);
+
+        if ($result['success']) {
+            wp_send_json_success($result);
+        } else {
+            wp_send_json_error($result);
+        }
+    }
+
+    /**
      * AJAX handler for disconnecting OAuth
      *
      * @since    1.0.2
