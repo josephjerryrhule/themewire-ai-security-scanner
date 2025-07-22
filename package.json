@@ -1,6 +1,6 @@
 {
   "name": "themewire-ai-security-scanner",
-  "version": "1.0.16",
+  "version": "1.0.17",
   "description": "AI-powered WordPress security scanner that detects, fixes, and quarantines malware and security vulnerabilities",
   "main": "themewire-ai-security-scanner.php",
   "scripts": {
