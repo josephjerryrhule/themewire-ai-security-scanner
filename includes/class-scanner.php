@@ -69,9 +69,9 @@ class Themewire_Security_Scanner
     private $scan_in_progress = false;
 
     /**
-     * Scan batch size for chunking large scans
+     * Scan batch size for chunking large scans - dynamically adjusted
      * 
-     * @since    1.0.23
+     * @since    1.0.27
      * @access   private
      * @var      int    $batch_size
      */
@@ -80,11 +80,82 @@ class Themewire_Security_Scanner
     /**
      * Maximum execution time per chunk in seconds
      * 
-     * @since    1.0.23
+     * @since    1.0.27
      * @access   private
      * @var      int    $chunk_time_limit
      */
     private $chunk_time_limit = 25;
+
+    /**
+     * Scan priorities configuration
+     * 
+     * @since    1.0.27
+     * @access   private
+     * @var      array    $scan_priorities
+     */
+    private $scan_priorities = array(
+        'critical' => array(
+            'uploads' => 1,        // PHP files in uploads - highest priority
+            'suspicious_files' => 2, // Hidden files, suspicious names
+            'backdoors' => 3       // Known backdoor patterns
+        ),
+        'high' => array(
+            'core_modified' => 4,  // Modified core files
+            'active_plugins' => 5, // Currently active plugins
+            'wp_config' => 6       // WordPress configuration files
+        ),
+        'medium' => array(
+            'inactive_plugins' => 7, // Inactive plugins
+            'active_themes' => 8,    // Active theme files
+            'mu_plugins' => 9        // Must-use plugins
+        ),
+        'low' => array(
+            'inactive_themes' => 10, // Inactive themes
+            'cache_files' => 11,     // Cache and temp files
+            'logs' => 12            // Log files
+        )
+    );
+
+    /**
+     * File extensions to prioritize for scanning
+     * 
+     * @since    1.0.27
+     * @access   private
+     * @var      array    $priority_extensions
+     */
+    private $priority_extensions = array(
+        'php', 'js', 'html', 'htm', 'phtml', 'php3', 'php4', 'php5', 'php7', 'php8'
+    );
+
+    /**
+     * File extensions to skip (safe files)
+     * 
+     * @since    1.0.27
+     * @access   private
+     * @var      array    $skip_extensions
+     */
+    private $skip_extensions = array(
+        'jpg', 'jpeg', 'png', 'gif', 'webp', 'svg', 'ico',
+        'pdf', 'doc', 'docx', 'xls', 'xlsx', 'ppt', 'pptx',
+        'zip', 'rar', '7z', 'tar', 'gz',
+        'mp3', 'mp4', 'wav', 'avi', 'mov',
+        'css', 'sass', 'scss', 'less',
+        'woff', 'woff2', 'ttf', 'eot'
+    );
+
+    /**
+     * Server performance metrics
+     * 
+     * @since    1.0.27
+     * @access   private
+     * @var      array    $performance_metrics
+     */
+    private $performance_metrics = array(
+        'memory_limit' => 0,
+        'execution_time' => 0,
+        'load_average' => 0,
+        'performance_class' => 'medium' // low, medium, high
+    );
 
     /**
      * Initialize the class and set its properties.
@@ -106,8 +177,453 @@ class Themewire_Security_Scanner
             $this->rate_limiter = new Themewire_Security_Rate_Limiter();
         }
 
+        // Initialize intelligent scanning system
+        $this->initialize_intelligent_scanning();
+
         // Try to increase PHP time limit for long-running scans
         $this->increase_execution_time();
+    }
+
+    /**
+     * Initialize the intelligent scanning system
+     *
+     * @since    1.0.27
+     */
+    private function initialize_intelligent_scanning()
+    {
+        // Analyze server performance
+        $this->analyze_server_performance();
+        
+        // Optimize batch size based on performance
+        $this->optimize_batch_size();
+        
+        if ($this->logger) {
+            $this->logger->info('Intelligent scanning initialized', array(
+                'performance_class' => $this->performance_metrics['performance_class'],
+                'optimized_batch_size' => $this->batch_size,
+                'memory_limit' => $this->performance_metrics['memory_limit']
+            ));
+        }
+    }
+
+    /**
+     * Analyze server performance metrics
+     *
+     * @since    1.0.27
+     */
+    private function analyze_server_performance()
+    {
+        // Get memory limit
+        $memory_limit = ini_get('memory_limit');
+        if ($memory_limit) {
+            $memory_bytes = $this->convert_memory_to_bytes($memory_limit);
+            $this->performance_metrics['memory_limit'] = $memory_bytes;
+        }
+
+        // Get max execution time
+        $max_execution = ini_get('max_execution_time');
+        $this->performance_metrics['execution_time'] = $max_execution;
+
+        // Determine performance class
+        if ($this->performance_metrics['memory_limit'] >= 512 * 1024 * 1024 && $max_execution >= 300) {
+            $this->performance_metrics['performance_class'] = 'high';
+        } elseif ($this->performance_metrics['memory_limit'] >= 256 * 1024 * 1024 && $max_execution >= 120) {
+            $this->performance_metrics['performance_class'] = 'medium';
+        } else {
+            $this->performance_metrics['performance_class'] = 'low';
+        }
+    }
+
+    /**
+     * Optimize batch size based on server performance
+     *
+     * @since    1.0.27
+     */
+    private function optimize_batch_size()
+    {
+        switch ($this->performance_metrics['performance_class']) {
+            case 'high':
+                $this->batch_size = 100;
+                $this->chunk_time_limit = 45;
+                break;
+            case 'medium':
+                $this->batch_size = 50;
+                $this->chunk_time_limit = 25;
+                break;
+            case 'low':
+                $this->batch_size = 25;
+                $this->chunk_time_limit = 15;
+                break;
+        }
+    }
+
+    /**
+     * Convert memory limit string to bytes
+     *
+     * @since    1.0.27
+     * @param    string    $memory_limit    Memory limit string (e.g., "256M")
+     * @return   int       Memory limit in bytes
+     */
+    private function convert_memory_to_bytes($memory_limit)
+    {
+        $memory_limit = trim($memory_limit);
+        $last_char = strtolower($memory_limit[strlen($memory_limit) - 1]);
+        $number = (int) substr($memory_limit, 0, -1);
+
+        switch ($last_char) {
+            case 'g':
+                return $number * 1024 * 1024 * 1024;
+            case 'm':
+                return $number * 1024 * 1024;
+            case 'k':
+                return $number * 1024;
+            default:
+                return (int) $memory_limit;
+        }
+    }
+
+    /**
+     * Smart file filtering - determine if file should be scanned
+     *
+     * @since    1.0.27
+     * @param    string    $file_path    Path to the file
+     * @return   array     Array with 'should_scan' boolean and 'priority' level
+     */
+    private function should_scan_file($file_path)
+    {
+        $file_info = pathinfo($file_path);
+        $extension = isset($file_info['extension']) ? strtolower($file_info['extension']) : '';
+        $filename = $file_info['basename'];
+        $directory = dirname($file_path);
+
+        // Skip files with extensions that are typically safe
+        if (in_array($extension, $this->skip_extensions)) {
+            return array('should_scan' => false, 'priority' => 999, 'reason' => 'Safe file type');
+        }
+
+        // High priority: PHP files in uploads directory
+        if ($extension === 'php' && strpos($file_path, 'wp-content/uploads') !== false) {
+            return array('should_scan' => true, 'priority' => 1, 'reason' => 'PHP in uploads - CRITICAL');
+        }
+
+        // High priority: Hidden files
+        if ($filename[0] === '.' && strlen($filename) > 1) {
+            return array('should_scan' => true, 'priority' => 2, 'reason' => 'Hidden file');
+        }
+
+        // High priority: Suspicious filenames
+        $suspicious_patterns = array(
+            '/shell\d*\.php/i', '/cmd\.php/i', '/backdoor/i', '/malware/i',
+            '/hack/i', '/exploit/i', '/inject/i', '/bypass/i'
+        );
+        foreach ($suspicious_patterns as $pattern) {
+            if (preg_match($pattern, $filename)) {
+                return array('should_scan' => true, 'priority' => 2, 'reason' => 'Suspicious filename');
+            }
+        }
+
+        // High priority: Recently modified files (within 30 days)
+        if (file_exists($file_path)) {
+            $file_time = filemtime($file_path);
+            $thirty_days_ago = time() - (30 * 24 * 60 * 60);
+            if ($file_time > $thirty_days_ago) {
+                return array('should_scan' => true, 'priority' => 3, 'reason' => 'Recently modified');
+            }
+        }
+
+        // Medium priority: Core WordPress files
+        if (strpos($file_path, 'wp-admin') !== false || strpos($file_path, 'wp-includes') !== false) {
+            return array('should_scan' => true, 'priority' => 4, 'reason' => 'WordPress core file');
+        }
+
+        // Medium priority: Active plugin files
+        if (strpos($file_path, 'wp-content/plugins') !== false && in_array($extension, $this->priority_extensions)) {
+            return array('should_scan' => true, 'priority' => 5, 'reason' => 'Plugin file');
+        }
+
+        // Medium priority: Theme files
+        if (strpos($file_path, 'wp-content/themes') !== false && in_array($extension, $this->priority_extensions)) {
+            return array('should_scan' => true, 'priority' => 6, 'reason' => 'Theme file');
+        }
+
+        // Low priority: Other executable files
+        if (in_array($extension, $this->priority_extensions)) {
+            return array('should_scan' => true, 'priority' => 8, 'reason' => 'Executable file');
+        }
+
+        // Skip everything else
+        return array('should_scan' => false, 'priority' => 999, 'reason' => 'Not in scan scope');
+    }
+
+    /**
+     * Get prioritized file list for scanning
+     *
+     * @since    1.0.27
+     * @param    string    $directory    Directory to scan
+     * @param    int       $limit        Maximum number of files to return
+     * @return   array     Prioritized array of files to scan
+     */
+    private function get_prioritized_files($directory, $limit = 1000)
+    {
+        $files_to_scan = array();
+        
+        if (!is_dir($directory)) {
+            return $files_to_scan;
+        }
+
+        try {
+            $iterator = new RecursiveIteratorIterator(
+                new RecursiveDirectoryIterator($directory, RecursiveDirectoryIterator::SKIP_DOTS),
+                RecursiveIteratorIterator::LEAVES_ONLY
+            );
+
+            foreach ($iterator as $file) {
+                if ($file->isFile()) {
+                    $file_path = $file->getPathname();
+                    $scan_decision = $this->should_scan_file($file_path);
+                    
+                    if ($scan_decision['should_scan']) {
+                        $files_to_scan[] = array(
+                            'path' => $file_path,
+                            'priority' => $scan_decision['priority'],
+                            'reason' => $scan_decision['reason'],
+                            'size' => $file->getSize(),
+                            'modified' => $file->getMTime()
+                        );
+                    }
+                }
+
+                // Prevent memory exhaustion on very large sites
+                if (count($files_to_scan) > $limit * 2) {
+                    break;
+                }
+            }
+        } catch (Exception $e) {
+            if ($this->logger) {
+                $this->logger->error('Error reading directory: ' . $directory, array('error' => $e->getMessage()));
+            }
+            return array();
+        }
+
+        // Sort by priority (lower numbers = higher priority)
+        usort($files_to_scan, function($a, $b) {
+            if ($a['priority'] === $b['priority']) {
+                // If same priority, prioritize recently modified files
+                return $b['modified'] - $a['modified'];
+            }
+            return $a['priority'] - $b['priority'];
+        });
+
+        // Return only the top files within limit
+        return array_slice($files_to_scan, 0, $limit);
+    }
+
+    /**
+     * Enhanced chunked scanning with intelligent prioritization
+     *
+     * @since    1.0.27
+     * @param    int       $scan_id     Scan ID
+     * @param    array     $scan_state  Current scan state
+     * @return   array     Processing result
+     */
+    private function process_intelligent_chunk($scan_id, $scan_state)
+    {
+        $start_time = time();
+        $files_processed = 0;
+        $max_files = $this->batch_size;
+        
+        // Get the current stage directory
+        $scan_directory = $this->get_stage_directory($scan_state['stage']);
+        
+        if (!$scan_directory) {
+            return array(
+                'success' => false,
+                'message' => 'Invalid scan stage: ' . $scan_state['stage']
+            );
+        }
+
+        // Get prioritized files for this stage
+        $prioritized_files = $this->get_prioritized_files($scan_directory, $max_files * 3);
+        
+        if (empty($prioritized_files)) {
+            return array(
+                'stage_complete' => true,
+                'next_stage' => $this->get_next_stage($scan_state['stage']),
+                'progress' => 100,
+                'next_offset' => 0,
+                'continue' => true,
+                'message' => ucfirst($scan_state['stage']) . ' scan completed - no files found'
+            );
+        }
+
+        // Process files starting from current offset
+        $offset = isset($scan_state['batch_offset']) ? $scan_state['batch_offset'] : 0;
+        $files_to_process = array_slice($prioritized_files, $offset, $max_files);
+        
+        foreach ($files_to_process as $file_info) {
+            // Check time limit
+            if ((time() - $start_time) >= $this->chunk_time_limit) {
+                break;
+            }
+            
+            $this->scan_single_file($scan_id, $file_info['path'], $file_info['reason']);
+            $files_processed++;
+        }
+
+        // Calculate progress
+        $total_files = count($prioritized_files);
+        $processed_total = $offset + $files_processed;
+        $progress = $total_files > 0 ? min(100, ($processed_total / $total_files) * 100) : 100;
+        
+        // Determine if stage is complete
+        $stage_complete = ($processed_total >= $total_files);
+        
+        return array(
+            'success' => true,
+            'stage_complete' => $stage_complete,
+            'next_stage' => $stage_complete ? $this->get_next_stage($scan_state['stage']) : $scan_state['stage'],
+            'progress' => round($progress),
+            'next_offset' => $stage_complete ? 0 : $processed_total,
+            'continue' => true,
+            'files_processed' => $files_processed,
+            'message' => sprintf(
+                '%s: %d/%d files scanned (%d%% complete)', 
+                ucfirst($scan_state['stage']), 
+                $processed_total, 
+                $total_files, 
+                round($progress)
+            )
+        );
+    }
+
+    /**
+     * Get directory for current scan stage
+     *
+     * @since    1.0.27
+     * @param    string    $stage    Current stage
+     * @return   string    Directory path or false
+     */
+    private function get_stage_directory($stage)
+    {
+        switch ($stage) {
+            case 'core':
+                return ABSPATH;
+            case 'plugins':
+                return WP_PLUGIN_DIR;
+            case 'themes':
+                return get_theme_root();
+            case 'uploads':
+                $upload_dir = wp_upload_dir();
+                return $upload_dir['basedir'];
+            default:
+                return false;
+        }
+    }
+
+    /**
+     * Get next stage in scan progression
+     *
+     * @since    1.0.27
+     * @param    string    $current_stage    Current stage
+     * @return   string    Next stage
+     */
+    private function get_next_stage($current_stage)
+    {
+        $stage_progression = array(
+            'core' => 'plugins',
+            'plugins' => 'themes', 
+            'themes' => 'uploads',
+            'uploads' => 'ai_analysis',
+            'ai_analysis' => 'completed'
+        );
+        
+        return isset($stage_progression[$current_stage]) ? $stage_progression[$current_stage] : 'completed';
+    }
+
+    /**
+     * Scan a single file and record results
+     *
+     * @since    1.0.27
+     * @param    int       $scan_id     Scan ID
+     * @param    string    $file_path   Path to file
+     * @param    string    $reason      Reason for scanning
+     * @return   boolean   Success status
+     */
+    private function scan_single_file($scan_id, $file_path, $reason)
+    {
+        try {
+            // Perform the actual file analysis
+            $analysis_result = $this->ai_analyzer->analyze_file($file_path);
+            
+            // If malicious, record the issue
+            if ($analysis_result['is_malware'] || (isset($analysis_result['is_malicious']) && $analysis_result['is_malicious'])) {
+                $confidence = isset($analysis_result['confidence']) ? $analysis_result['confidence'] : 50;
+                $explanation = isset($analysis_result['explanation']) ? $analysis_result['explanation'] : 'Malicious content detected';
+                $suggested_fix = isset($analysis_result['suggested_fix']) ? $analysis_result['suggested_fix'] : 'quarantine';
+                
+                // Determine severity based on confidence and indicators
+                $severity = $this->determine_severity($confidence, $reason, $file_path);
+                
+                $this->database->record_issue(
+                    $scan_id,
+                    $file_path,
+                    'malware',
+                    $severity,
+                    $explanation,
+                    $suggested_fix,
+                    json_encode(array(
+                        'confidence' => $confidence,
+                        'scan_reason' => $reason,
+                        'indicators' => isset($analysis_result['indicators']) ? $analysis_result['indicators'] : array()
+                    ))
+                );
+                
+                if ($this->logger) {
+                    $this->logger->warning('Malicious file detected', array(
+                        'file' => $file_path,
+                        'confidence' => $confidence,
+                        'reason' => $reason
+                    ));
+                }
+            }
+            
+            return true;
+        } catch (Exception $e) {
+            if ($this->logger) {
+                $this->logger->error('Error scanning file: ' . $file_path, array('error' => $e->getMessage()));
+            }
+            return false;
+        }
+    }
+
+    /**
+     * Determine issue severity based on various factors
+     *
+     * @since    1.0.27
+     * @param    int       $confidence  Confidence score
+     * @param    string    $reason      Scan reason
+     * @param    string    $file_path   File path
+     * @return   string    Severity level (high, medium, low)
+     */
+    private function determine_severity($confidence, $reason, $file_path)
+    {
+        // High severity conditions
+        if ($confidence >= 80 || 
+            strpos($reason, 'CRITICAL') !== false ||
+            strpos($file_path, 'wp-content/uploads') !== false ||
+            strpos($reason, 'Hidden file') !== false) {
+            return 'high';
+        }
+        
+        // Medium severity conditions
+        if ($confidence >= 50 || 
+            strpos($reason, 'Suspicious') !== false ||
+            strpos($reason, 'Recently modified') !== false) {
+            return 'medium';
+        }
+        
+        // Default to low severity
+        return 'low';
     }
 
     /**
@@ -416,30 +932,20 @@ class Themewire_Security_Scanner
         $this->update_scan_activity();
 
         try {
-            switch ($scan_state['stage']) {
-                case 'core':
-                    $result = $this->process_core_files_chunk($scan_id, $scan_state);
-                    break;
+            // Use intelligent scanning for file-based stages
+            if (in_array($scan_state['stage'], array('core', 'plugins', 'themes', 'uploads'))) {
+                $result = $this->process_intelligent_chunk($scan_id, $scan_state);
+            } else {
+                // Use traditional processing for AI analysis
+                switch ($scan_state['stage']) {
+                    case 'ai_analysis':
+                        $result = $this->process_ai_analysis_chunk($scan_id, $scan_state);
+                        break;
 
-                case 'plugins':
-                    $result = $this->process_plugins_chunk($scan_id, $scan_state);
-                    break;
-
-                case 'themes':
-                    $result = $this->process_themes_chunk($scan_id, $scan_state);
-                    break;
-
-                case 'uploads':
-                    $result = $this->process_uploads_chunk($scan_id, $scan_state);
-                    break;
-
-                case 'ai_analysis':
-                    $result = $this->process_ai_analysis_chunk($scan_id, $scan_state);
-                    break;
-
-                case 'completed':
-                default:
-                    return $this->finalize_chunked_scan($scan_id);
+                    case 'completed':
+                    default:
+                        return $this->finalize_chunked_scan($scan_id);
+                }
             }
 
             // Update scan state
