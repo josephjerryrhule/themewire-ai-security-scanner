@@ -379,13 +379,17 @@ class Themewire_Security_Scanner
         update_option('twss_current_scan_id', $scan_id);
 
         // Update initial progress
-        $this->database->update_scan_progress($scan_id, 'core', 0, __('Initializing scan...', 'themewire-security'));
+        $this->database->update_scan_progress($scan_id, 'core', 0, __('Starting core file scan...', 'themewire-security'));
+
+        // Process the first chunk immediately to prevent "stuck at initializing" issue
+        $first_chunk_result = $this->process_scan_chunk();
 
         return array(
             'success' => true,
             'scan_id' => $scan_id,
             'chunked' => true,
-            'message' => __('Scan initialized successfully. Processing will continue in background.', 'themewire-security')
+            'first_chunk_processed' => $first_chunk_result['success'],
+            'message' => __('Scan started and first chunk processed successfully.', 'themewire-security')
         );
     }
 

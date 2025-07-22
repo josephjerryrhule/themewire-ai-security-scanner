@@ -4,7 +4,7 @@
  * Plugin Name: Themewire AI Security Scanner
  * Plugin URI: https://github.com/josephjerryrhule/themewire-ai-security-scanner
  * Description: AI-powered WordPress security scanner that detects, fixes, and quarantines malware and security vulnerabilities.
- * Version:           1.0.24
+ * Version:           1.0.25
  * Author: Themewire LTD
  * Author URI: https://themewire.co
  * License: GPL-2.0+
@@ -24,13 +24,13 @@ if (!defined('WPINC')) {
 }
 
 // Define plugin constants
-define('THEMEWIRE_SECURITY_VERSION', '1.0.24');
+define('THEMEWIRE_SECURITY_VERSION', '1.0.25');
 define('TWSS_PLUGIN_DIR', plugin_dir_path(__FILE__));
 define('TWSS_PLUGIN_URL', plugin_dir_url(__FILE__));
 define('TWSS_PLUGIN_BASENAME', plugin_basename(__FILE__));
 define('TWSS_GITHUB_USERNAME', 'josephjerryrhule');
 define('TWSS_GITHUB_REPO', 'themewire-ai-security-scanner');
-define('TWSS_VERSION', '1.0.24');
+define('TWSS_VERSION', '1.0.25');
 
 /**
  * The code that runs during plugin activation.
