@@ -152,6 +152,12 @@ class Themewire_Security_Scanner
         $this->set_scan_in_progress(true);
         $this->update_scan_activity();
 
+        // Clean up any ghost files from previous scans
+        $ghost_count = $this->database->cleanup_ghost_issues();
+        if ($ghost_count > 0 && $this->logger) {
+            $this->logger->info("Cleaned up {$ghost_count} ghost issues before starting scan");
+        }
+
         $scan_id = $this->database->create_new_scan_record();
 
         try {

@@ -1,5 +1,20 @@
 # Changelog
 
+## [1.0.19] - 2025-07-22
+
+### Fixed
+- **Ghost File Prevention**: Enhanced database-level validation to prevent ghost files from appearing in scan results
+  - Added comprehensive 8-layer file validation in `add_issue()` method
+  - Validates file existence, file type, readability, realpath resolution, and file size
+  - Added `cleanup_ghost_issues()` method to remove existing ghost files from database
+  - Automatic cleanup runs before each new scan to ensure data integrity
+  - Special handling for legitimate missing file issue types (core_file_missing, plugin_file_missing, theme_file_missing)
+  - Enhanced error logging for skipped ghost files during database operations
+
+### Improved  
+- **Data Integrity**: Scan results now only show files that actually exist on the WordPress instance
+- **Database Operations**: More robust file validation prevents invalid entries in issues table
+
 ## [1.0.18] - 2025-07-22
 
 ### Fixed
