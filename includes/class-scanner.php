@@ -2423,7 +2423,7 @@ class Themewire_Security_Scanner
         }
 
         $results = array();
-        
+
         // Scan for malware signatures
         $malware_result = $this->scan_file_for_malware($file_path);
         if (!empty($malware_result['issues'])) {
@@ -2433,7 +2433,7 @@ class Themewire_Security_Scanner
                     'code_snippet' => isset($issue['code_snippet']) ? $issue['code_snippet'] : '',
                     'detection_type' => 'malware'
                 ));
-                
+
                 $this->database->record_issue(
                     $scan_id,
                     $file_path,
@@ -2457,7 +2457,7 @@ class Themewire_Security_Scanner
                         'code_snippet' => isset($issue['code_snippet']) ? $issue['code_snippet'] : '',
                         'detection_type' => 'obfuscation'
                     ));
-                    
+
                     $this->database->record_issue(
                         $scan_id,
                         $file_path,
@@ -2503,9 +2503,9 @@ class Themewire_Security_Scanner
         if (!is_dir($plugin_dir)) {
             return array();
         }
-        
+
         $plugin_files = array();
-        
+
         // Get active plugins only to avoid scanning inactive ones
         $active_plugins = get_option('active_plugins', array());
         foreach ($active_plugins as $plugin) {
@@ -2515,7 +2515,7 @@ class Themewire_Security_Scanner
                 $plugin_files = array_merge($plugin_files, $files);
             }
         }
-        
+
         // Add network plugins for multisite
         if (is_multisite()) {
             $network_plugins = get_site_option('active_sitewide_plugins', array());
@@ -2527,7 +2527,7 @@ class Themewire_Security_Scanner
                 }
             }
         }
-        
+
         return array_unique($plugin_files);
     }
 
@@ -2543,9 +2543,9 @@ class Themewire_Security_Scanner
         if (!is_dir($themes_dir)) {
             return array();
         }
-        
+
         $theme_files = array();
-        
+
         // Get active theme
         $active_theme = wp_get_theme();
         $active_theme_path = $themes_dir . '/' . $active_theme->get_stylesheet();
@@ -2553,7 +2553,7 @@ class Themewire_Security_Scanner
             $files = $this->find_php_files($active_theme_path);
             $theme_files = array_merge($theme_files, $files);
         }
-        
+
         // Add parent theme if child theme is active
         if ($active_theme->parent()) {
             $parent_theme_path = $themes_dir . '/' . $active_theme->get_template();
@@ -2562,7 +2562,7 @@ class Themewire_Security_Scanner
                 $theme_files = array_merge($theme_files, $files);
             }
         }
-        
+
         return array_unique($theme_files);
     }
 
@@ -2578,7 +2578,7 @@ class Themewire_Security_Scanner
         if (!isset($uploads_dir['basedir']) || !is_dir($uploads_dir['basedir'])) {
             return array();
         }
-        
+
         // Find PHP files in uploads (which are usually suspicious)
         return $this->find_php_files($uploads_dir['basedir']);
     }
@@ -2597,7 +2597,7 @@ class Themewire_Security_Scanner
             // First chunk - get all core files
             $core_files = $this->get_core_files();
             set_transient('twss_scan_core_files', $core_files, HOUR_IN_SECONDS);
-            
+
             if (empty($core_files)) {
                 return array(
                     'stage_complete' => true,

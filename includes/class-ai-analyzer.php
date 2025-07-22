@@ -1238,7 +1238,7 @@ class Themewire_Security_AI_Analyzer
     {
         // Sanitize raw JSON response if it contains JSON
         $response = $this->sanitize_ai_response($response);
-        
+
         // Default values
         $result = array(
             'is_malware' => false,
@@ -1319,7 +1319,7 @@ class Themewire_Security_AI_Analyzer
         // Check if response is JSON
         if ($this->is_json($response)) {
             $json_data = json_decode($response, true);
-            
+
             // If JSON decoding successful, extract the actual text response
             if (is_array($json_data)) {
                 // Handle different AI response formats
@@ -1363,7 +1363,7 @@ class Themewire_Security_AI_Analyzer
         if (!is_string($string)) {
             return false;
         }
-        
+
         json_decode($string);
         return (json_last_error() === JSON_ERROR_NONE);
     }
