@@ -540,4 +540,32 @@ class Themewire_Security_Database
 
         return ($result1 !== false && $result2 !== false);
     }
+
+    /**
+     * Update scan counts in the scans table
+     *
+     * @since    1.0.17
+     * @param    int      $scan_id        The scan ID
+     * @param    int      $issues_found   Number of issues found
+     * @param    int      $issues_fixed   Number of issues fixed
+     */
+    public function update_scan_counts($scan_id, $issues_found, $issues_fixed)
+    {
+        global $wpdb;
+
+        $table_scans = $wpdb->prefix . 'twss_scans';
+
+        $result = $wpdb->update(
+            $table_scans,
+            array(
+                'issues_found' => $issues_found,
+                'issues_fixed' => $issues_fixed
+            ),
+            array('id' => $scan_id),
+            array('%d', '%d'),
+            array('%d')
+        );
+
+        return $result !== false;
+    }
 }

@@ -1,5 +1,13 @@
 # Changelog
 
+## [1.0.17] - 2025-07-22
+
+### Fixed
+- **Database Method Error**: Fixed fatal error "Call to undefined method update_scan_counts()" 
+  - Added missing `update_scan_counts()` method to database class
+  - Method properly updates issues_found and issues_fixed counts in scans table
+  - Resolves error when clearing scan issues from admin interface
+
 ## [1.0.16] - 2025-07-22
 
 ### Fixed
