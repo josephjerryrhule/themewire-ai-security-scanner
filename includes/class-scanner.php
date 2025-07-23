@@ -4883,4 +4883,17 @@ class Themewire_Security_Scanner
             )
         );
     }
+
+    /**
+     * Test method to verify malware detection is working
+     * FOR TESTING PURPOSES ONLY - Remove in production
+     *
+     * @since    1.0.49
+     * @param    string    $file_path    File path to test
+     * @return   array     Detection result
+     */
+    public function test_malware_detection($file_path)
+    {
+        return $this->scan_file_for_malware($file_path);
+    }
 }
