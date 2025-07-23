@@ -1730,7 +1730,7 @@ class Themewire_Security_AI_Analyzer
             }
 
             $auth_data = json_decode($auth_response, true);
-            
+
             if (!isset($auth_data['data'])) {
                 return array(
                     'success' => false,
@@ -1757,7 +1757,7 @@ class Themewire_Security_AI_Analyzer
             foreach ($test_models as $model => $description) {
                 $test_result = $this->test_specific_model($api_key, $model);
                 $test_results[$model] = $test_result;
-                
+
                 if ($test_result['success'] && !$available_model) {
                     $available_model = $model;
                     break;
@@ -1767,7 +1767,7 @@ class Themewire_Security_AI_Analyzer
             if ($available_model) {
                 // Update the plugin setting to use the working model
                 update_option('twss_openrouter_model', $available_model);
-                
+
                 $message = "✅ OpenRouter API key is valid!\n\n";
                 $message .= "📊 Account Information:\n";
                 $message .= "• Type: " . ($is_free_tier ? 'Free Tier' : 'Paid Account') . "\n";
@@ -1779,7 +1779,7 @@ class Themewire_Security_AI_Analyzer
                 $message .= "• " . $test_models[$available_model] . "\n";
                 $message .= "• Plugin automatically configured to use this model\n\n";
                 $message .= "🎯 Ready for AI-powered security scanning!";
-                
+
                 return array(
                     'success' => true,
                     'message' => $message,
@@ -1791,7 +1791,7 @@ class Themewire_Security_AI_Analyzer
                 $message .= "📊 Account Information:\n";
                 $message .= "• Type: " . ($is_free_tier ? 'Free Tier' : 'Paid Account') . "\n";
                 $message .= "• Usage: $" . number_format($usage, 4) . "\n";
-                
+
                 if ($is_free_tier && $usage == 0) {
                     $message .= "\n🎯 Free Tier Account Issues:\n";
                     $message .= "• Free tier may require small credits (even for 'free' models)\n";
@@ -1803,9 +1803,20 @@ class Themewire_Security_AI_Analyzer
                     $message .= "3. Try using OpenAI or Google Gemini APIs directly\n\n";
                     $message .= "🔗 Add credits at: https://openrouter.ai/credits";
                 } else {
-                    $message .= "\n💡 Try refreshing your account or contact OpenRouter support.";
+                    $message .= "\n� Model Availability Issues:\n";
+                    $message .= "Your account has credits but no models are accessible.\n";
+                    $message .= "This commonly occurs due to:\n\n";
+                    $message .= "• Regional restrictions on model access\n";
+                    $message .= "• Account verification requirements\n";
+                    $message .= "• Temporary provider outages\n\n";
+                    $message .= "💡 Recommended Solutions:\n";
+                    $message .= "1. Verify your account at https://openrouter.ai/account\n";
+                    $message .= "2. Contact OpenRouter support about regional access\n";
+                    $message .= "3. Use OpenAI API directly (more reliable)\n";
+                    $message .= "4. Use Google Gemini API as alternative\n\n";
+                    $message .= "🔧 Quick Fix: Configure OpenAI or Gemini instead";
                 }
-                
+
                 return array(
                     'success' => false,
                     'message' => $message,
@@ -1813,7 +1824,6 @@ class Themewire_Security_AI_Analyzer
                     'account_info' => $account_info
                 );
             }
-
         } catch (Exception $e) {
             return array(
                 'success' => false,
@@ -1886,14 +1896,13 @@ class Themewire_Security_AI_Analyzer
                 if (isset($response_data['error']['message'])) {
                     $error_message = $response_data['error']['message'];
                 }
-                
+
                 return array(
                     'success' => false,
                     'error' => $error_message,
                     'status_code' => $status_code
                 );
             }
-
         } catch (Exception $e) {
             return array(
                 'success' => false,
