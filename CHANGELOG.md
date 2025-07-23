@@ -1,5 +1,39 @@
 # Changelog
 
+## [1.0.47] - 2025-07-23
+
+### Fixed
+- **Critical Scan Completion Issue**: Completely resolved issue where scans showed "0 scanned files" despite successful completion
+  - Fixed dashboard stale scan detection logic that was prematurely marking scans as completed when users switched pages
+  - Changed stale scan timeout from instant to 15-minute reasonable threshold
+  - Added proper file count calculation when dashboard marks scans as completed
+  - Enhanced scanner with fresh inventory recalculation fallback to ensure accurate file counts
+  - Implemented multi-layer completion logic: scan_state → fresh inventory → database stats → files_scanned
+  - Added database-level protection against saving 0 file counts with fallback validation
+  - Scans now consistently show correct file counts (7,434+ files) and complete naturally in ~35 seconds
+
+### Enhanced
+- **Production Build System**: Fixed and improved production build process
+  - Fixed circular copy issue in build script using rsync with proper exclusions
+  - Build script now properly excludes build/, dist/, and .git directories during copy
+  - Generated clean production ZIP package (125K) with 32 essential files
+  - Added SHA256 checksum generation for build verification
+  - Removed all build artifacts from git tracking following best practices
+
+### Cleaned
+- **Debug Code Removal**: Removed all debug infrastructure for production readiness
+  - Eliminated extensive CRITICAL DEBUG logging from scanner class
+  - Removed debug file creation code and verbose error_log statements
+  - Cleaned up debug files: debug-*.php, test-*.php, db-test.php, debug-capture.php
+  - Preserved all functional fixes while removing only debug/logging code
+  - Added build/ directory to .gitignore to prevent future build artifact commits
+
+### Technical
+- **Database Connectivity**: Enhanced database operations with comprehensive validation
+- **Error Handling**: Improved error handling and logging throughout scanner system
+- **Code Quality**: Production-ready codebase with all debug infrastructure removed
+- **Version Control**: Proper gitignore configuration and clean repository structure
+
 ## [1.0.21] - 2025-07-22
 
 ### Added
