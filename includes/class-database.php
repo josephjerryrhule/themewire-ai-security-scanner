@@ -192,10 +192,10 @@ class Themewire_Security_Database
             array('total_files' => $total_files),
             array('id' => $scan_id)
         );
-        
+
         // Log the result
         error_log("TWSS Debug: Database update result: " . ($result !== false ? "success ($result rows affected)" : "failed"));
-        
+
         return $result;
     }
 

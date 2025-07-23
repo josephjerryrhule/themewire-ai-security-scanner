@@ -4037,17 +4037,17 @@ class Themewire_Security_Scanner
             // Use the original total_files as fallback - at least we tried to scan them
             $final_files_count = $scan_state['total_files'];
         }
-        
+
         // TEMPORARY DEBUG: Force a non-zero value to test display
         if ($final_files_count === 0) {
             $final_files_count = 100; // Temporary hardcode for testing
         }
-        
+
         // Add debug logging
-        error_log("TWSS Debug: Updating scan $scan_id with files_scanned: " . $scan_state['files_scanned'] . 
-                 ", total_files: " . ($scan_state['total_files'] ?? 'unknown') . 
-                 ", final_count: " . $final_files_count);
-        
+        error_log("TWSS Debug: Updating scan $scan_id with files_scanned: " . $scan_state['files_scanned'] .
+            ", total_files: " . ($scan_state['total_files'] ?? 'unknown') .
+            ", final_count: " . $final_files_count);
+
         $this->database->update_scan_total_files($scan_id, $final_files_count);
 
         $this->set_scan_in_progress(false);

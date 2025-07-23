@@ -258,7 +258,7 @@ switch ($stats['threat_level']) {
                     $files_count = intval($recent_scan['total_files'] ?? 0);
                     $scan_status = sanitize_text_field($recent_scan['status'] ?? 'unknown');
                     $scan_date = sanitize_text_field($recent_scan['scan_date'] ?? '');
-                    
+
                     // Debug logging
                     error_log("TWSS Debug: Dashboard showing scan_id: $scan_id, status: $scan_status, total_files: $files_count, issues: $issues_count");
 
