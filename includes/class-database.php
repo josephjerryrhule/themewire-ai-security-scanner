@@ -19,8 +19,65 @@ class Themewire_Security_Database
      */
     public function __construct()
     {
+        // Validate database connection on instantiation
+        $this->validate_database_connection();
+
         // Create tables if they don't exist
         add_action('plugins_loaded', array($this, 'create_tables'));
+    }
+
+    /**
+     * Validate database connection for Docker/DevKinsta environments
+     *
+     * @since    1.0.0
+     * @return   bool    True if connection is valid
+     */
+    private function validate_database_connection()
+    {
+        global $wpdb;
+
+        // Check if $wpdb is available
+        if (!isset($wpdb) || !is_object($wpdb)) {
+            error_log('TWSS Database: WordPress database object not available');
+            return false;
+        }
+
+        // Test database connection with a simple query
+        $connection_test = $wpdb->get_var("SELECT 1");
+
+        if ($connection_test !== '1') {
+            error_log('TWSS Database: Connection test failed - ' . $wpdb->last_error);
+            return false;
+        }
+
+        // Additional Docker/DevKinsta specific checks
+        $this->check_environment_compatibility();
+
+        return true;
+    }
+
+    /**
+     * Check environment compatibility for Docker/DevKinsta
+     *
+     * @since    1.0.0
+     */
+    private function check_environment_compatibility()
+    {
+        global $wpdb;
+
+        // Check MySQL version compatibility (logging disabled to reduce FastCGI spam)
+        $mysql_version = $wpdb->get_var("SELECT VERSION()");
+        // if ($mysql_version) {
+        //     error_log('TWSS Database: MySQL version detected - ' . $mysql_version);
+        // }
+
+        // Check table prefix (logging disabled to reduce FastCGI spam)
+        $prefix = $wpdb->prefix;
+        // error_log('TWSS Database: Using table prefix - ' . $prefix);
+
+        // Check charset (logging disabled to reduce FastCGI spam)
+        $charset = $wpdb->get_charset_collate();
+        // error_log('TWSS Database: Using charset - ' . $charset);
     }
 
     /**
@@ -951,5 +1008,231 @@ class Themewire_Security_Database
         }
 
         return $stats;
+    }
+
+    /**
+     * Get recent scans for dashboard display
+     *
+     * @since    1.0.0
+     * @param    int    $limit    Number of scans to retrieve
+     * @return   array  Array of recent scans
+     */
+    public function get_recent_scans($limit = 5)
+    {
+        global $wpdb;
+
+        if (!$this->validate_database_connection()) {
+            return array();
+        }
+
+        $scans = $wpdb->get_results($wpdb->prepare(
+            "SELECT * FROM {$wpdb->prefix}twss_scans 
+             ORDER BY scan_date DESC 
+             LIMIT %d",
+            $limit
+        ), ARRAY_A);
+
+        return $scans ? $scans : array();
+    }
+
+    /**
+     * Get dashboard statistics
+     *
+     * @since    1.0.0
+     * @return   array  Dashboard statistics
+     */
+    public function get_dashboard_stats()
+    {
+        global $wpdb;
+
+        if (!$this->validate_database_connection()) {
+            return array(
+                'total_scans' => 0,
+                'total_files_scanned' => 0,
+                'total_issues_found' => 0,
+                'total_issues_fixed' => 0,
+                'last_scan_date' => null
+            );
+        }
+
+        $stats = array();
+
+        // Total scans
+        $stats['total_scans'] = $wpdb->get_var(
+            "SELECT COUNT(*) FROM {$wpdb->prefix}twss_scans"
+        ) ?: 0;
+
+        // Total files scanned
+        $stats['total_files_scanned'] = $wpdb->get_var(
+            "SELECT SUM(total_files) FROM {$wpdb->prefix}twss_scans"
+        ) ?: 0;
+
+        // Total issues found
+        $stats['total_issues_found'] = $wpdb->get_var(
+            "SELECT SUM(issues_found) FROM {$wpdb->prefix}twss_scans"
+        ) ?: 0;
+
+        // Total issues fixed
+        $stats['total_issues_fixed'] = $wpdb->get_var(
+            "SELECT SUM(issues_fixed) FROM {$wpdb->prefix}twss_scans"
+        ) ?: 0;
+
+        // Last scan date
+        $stats['last_scan_date'] = $wpdb->get_var(
+            "SELECT scan_date FROM {$wpdb->prefix}twss_scans ORDER BY scan_date DESC LIMIT 1"
+        );
+
+        return $stats;
+    }
+
+    /**
+     * Get all issues for issues page display
+     *
+     * @since    1.0.0
+     * @param    string $status   Filter by status
+     * @param    int    $limit    Number of issues to retrieve
+     * @param    int    $offset   Offset for pagination
+     * @return   array  Array of issues
+     */
+    public function get_all_issues($status = null, $limit = 50, $offset = 0)
+    {
+        global $wpdb;
+
+        if (!$this->validate_database_connection()) {
+            return array();
+        }
+
+        $sql = "SELECT * FROM {$wpdb->prefix}twss_issues";
+        $params = array();
+
+        if ($status) {
+            $sql .= " WHERE status = %s";
+            $params[] = $status;
+        }
+
+        $sql .= " ORDER BY date_detected DESC";
+
+        if ($limit > 0) {
+            $sql .= " LIMIT %d OFFSET %d";
+            $params[] = $limit;
+            $params[] = $offset;
+        }
+
+        if (!empty($params)) {
+            $issues = $wpdb->get_results($wpdb->prepare($sql, $params), ARRAY_A);
+        } else {
+            $issues = $wpdb->get_results($sql, ARRAY_A);
+        }
+
+        return $issues ? $issues : array();
+    }
+
+    /**
+     * Get issue count by status
+     *
+     * @since    1.0.0
+     * @return   array  Issue counts by status
+     */
+    public function get_issue_counts()
+    {
+        global $wpdb;
+
+        if (!$this->validate_database_connection()) {
+            return array(
+                'pending' => 0,
+                'resolved' => 0,
+                'whitelisted' => 0,
+                'total' => 0
+            );
+        }
+
+        $counts = $wpdb->get_results(
+            "SELECT status, COUNT(*) as count FROM {$wpdb->prefix}twss_issues GROUP BY status",
+            ARRAY_A
+        );
+
+        $result = array(
+            'pending' => 0,
+            'resolved' => 0,
+            'whitelisted' => 0,
+            'total' => 0
+        );
+
+        foreach ($counts as $count) {
+            $result[$count['status']] = (int)$count['count'];
+            $result['total'] += (int)$count['count'];
+        }
+
+        return $result;
+    }
+
+    /**
+     * Test database connection
+     *
+     * @since    1.0.0
+     * @return   array  Connection test result
+     */
+    public function test_database_connection()
+    {
+        global $wpdb;
+
+        try {
+            // Test basic connection
+            $test = $wpdb->get_var("SELECT 1");
+
+            if ($test !== '1') {
+                return array(
+                    'success' => false,
+                    'message' => 'Database connection test failed: ' . $wpdb->last_error
+                );
+            }
+
+            // Test table existence
+            $tables_exist = $this->check_tables_exist();
+
+            return array(
+                'success' => true,
+                'message' => 'Database connection successful',
+                'tables_exist' => $tables_exist,
+                'mysql_version' => $wpdb->get_var("SELECT VERSION()"),
+                'table_prefix' => $wpdb->prefix
+            );
+        } catch (Exception $e) {
+            return array(
+                'success' => false,
+                'message' => 'Database connection error: ' . $e->getMessage()
+            );
+        }
+    }
+
+    /**
+     * Check if all required tables exist
+     *
+     * @since    1.0.0
+     * @return   array  Table existence status
+     */
+    private function check_tables_exist()
+    {
+        global $wpdb;
+
+        $required_tables = array(
+            'scans' => $wpdb->prefix . 'twss_scans',
+            'issues' => $wpdb->prefix . 'twss_issues',
+            'progress' => $wpdb->prefix . 'twss_scan_progress',
+            'whitelist' => $wpdb->prefix . 'twss_whitelist',
+            'scan_results' => $wpdb->prefix . 'twss_scan_results'
+        );
+
+        $existing_tables = array();
+
+        foreach ($required_tables as $key => $table_name) {
+            $exists = $wpdb->get_var($wpdb->prepare(
+                "SHOW TABLES LIKE %s",
+                $table_name
+            ));
+            $existing_tables[$key] = ($exists === $table_name);
+        }
+
+        return $existing_tables;
     }
 }

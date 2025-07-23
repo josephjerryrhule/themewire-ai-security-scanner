@@ -19,67 +19,68 @@ if (!current_user_can('manage_options')) {
     wp_die(__('You do not have sufficient permissions to access this page.'));
 }
 
-// Get the most recent scan with prepared statement
-global $wpdb;
-$scan = $wpdb->get_row($wpdb->prepare(
-    "SELECT * FROM {$wpdb->prefix}twss_scans ORDER BY scan_date DESC LIMIT %d",
-    1
-), ARRAY_A);
+// Initialize database instance for proper connection handling
+try {
+    $database = new Themewire_Security_Database();
 
-// Initialize secure stats array
-$stats = array(
-    'total_issues' => 0,
-    'high_severity' => 0,
-    'medium_severity' => 0,
-    'low_severity' => 0,
-    'fixed_issues' => 0,
-    'scan_date' => 'Never',
-    'threat_level' => 'unknown',
-    'security_score' => 0
-);
+    // Get dashboard statistics using the enhanced database methods
+    $stats = $database->get_dashboard_stats();
+    $recent_scans = $database->get_recent_scans(5);
+    $issue_counts = $database->get_issue_counts();
 
-if ($scan && is_array($scan)) {
-    // Security: Validate scan ID
-    $scan_id = intval($scan['id']);
-    if ($scan_id > 0) {
-        // Count issues by severity with prepared statements
-        $high_severity = $wpdb->get_var($wpdb->prepare(
-            "SELECT COUNT(*) FROM {$wpdb->prefix}twss_issues WHERE scan_id = %d AND severity = %s AND status != %s",
-            $scan_id,
-            'high',
-            'fixed'
-        ));
-
-        $medium_severity = $wpdb->get_var($wpdb->prepare(
-            "SELECT COUNT(*) FROM {$wpdb->prefix}twss_issues WHERE scan_id = %d AND severity = %s AND status != %s",
-            $scan_id,
-            'medium',
-            'fixed'
-        ));
-
-        $low_severity = $wpdb->get_var($wpdb->prepare(
-            "SELECT COUNT(*) FROM {$wpdb->prefix}twss_issues WHERE scan_id = %d AND severity = %s AND status != %s",
-            $scan_id,
-            'low',
-            'fixed'
-        ));
-
-        // Security: Sanitize and validate data
-        $stats['total_issues'] = max(0, intval($scan['issues_found'] ?? 0));
-        $stats['high_severity'] = max(0, intval($high_severity ?? 0));
-        $stats['medium_severity'] = max(0, intval($medium_severity ?? 0));
-        $stats['low_severity'] = max(0, intval($low_severity ?? 0));
-        $stats['fixed_issues'] = max(0, intval($scan['issues_fixed'] ?? 0));
-        $stats['scan_date'] = sanitize_text_field($scan['scan_date'] ?? 'Never');
-
-        // Calculate threat level and security score
-        $active_issues = $stats['high_severity'] + $stats['medium_severity'] + $stats['low_severity'];
-        $stats['threat_level'] = $stats['high_severity'] > 0 ? 'critical' : ($stats['medium_severity'] > 0 ? 'high' : ($stats['low_severity'] > 0 ? 'medium' : 'low'));
-
-        // Security score calculation (0-100, higher is better)
-        $total_scanned = max(1, intval($scan['files_scanned'] ?? 1));
-        $stats['security_score'] = max(0, min(100, 100 - (($active_issues / $total_scanned) * 100)));
+    // Test database connection
+    $db_test = $database->test_database_connection();
+    if (!$db_test['success']) {
+        echo '<div class="notice notice-error"><p><strong>Database Connection Error:</strong> ' . esc_html($db_test['message']) . '</p></div>';
     }
+} catch (Exception $e) {
+    echo '<div class="notice notice-error"><p><strong>Error:</strong> ' . esc_html($e->getMessage()) . '</p></div>';
+    $stats = array(
+        'total_scans' => 0,
+        'total_files_scanned' => 0,
+        'total_issues_found' => 0,
+        'total_issues_fixed' => 0,
+        'last_scan_date' => null
+    );
+    $recent_scans = array();
+    $issue_counts = array('pending' => 0, 'resolved' => 0, 'whitelisted' => 0, 'total' => 0);
+}
+
+// Calculate threat level based on pending issues
+$threat_level = 'low';
+if ($issue_counts['pending'] > 0) {
+    // Simple threat level determination based on issue count
+    if ($issue_counts['pending'] >= 10) {
+        $threat_level = 'critical';
+    } elseif ($issue_counts['pending'] >= 5) {
+        $threat_level = 'high';
+    } else {
+        $threat_level = 'medium';
+    }
+}
+
+// Security: Determine card class based on threat level
+$threat_card_class = 'card';
+switch ($threat_level) {
+    case 'critical':
+        $threat_card_class = 'card critical';
+        break;
+    case 'high':
+        $threat_card_class = 'card warning';
+        break;
+    case 'medium':
+        $threat_card_class = 'card warning';
+        break;
+    default:
+        $threat_card_class = 'card';
+        break;
+}
+
+// Calculate security score (0-100, higher is better)
+$security_score = 100;
+if ($stats['total_files_scanned'] > 0) {
+    $threat_ratio = $issue_counts['pending'] / max(1, $stats['total_files_scanned']);
+    $security_score = max(0, min(100, 100 - ($threat_ratio * 100)));
 }
 
 // Get the next scheduled scan time securely
@@ -93,7 +94,7 @@ try {
 
 // Security: Determine card class based on threat level
 $threat_card_class = 'card';
-switch ($stats['threat_level']) {
+switch ($threat_level) {
     case 'critical':
         $threat_card_class = 'card critical';
         break;
@@ -127,46 +128,51 @@ switch ($stats['threat_level']) {
     <div class="<?php echo esc_attr($threat_card_class); ?>">
         <h2 class="card-title">
             <?php echo esc_html__('Security Status Overview', 'themewire-security'); ?>
-            <span class="threat-indicator threat-<?php echo esc_attr($stats['threat_level']); ?>">
-                <?php echo esc_html(strtoupper($stats['threat_level'])); ?>
+            <span class="threat-indicator threat-<?php echo esc_attr($threat_level); ?>">
+                <?php echo esc_html(strtoupper($threat_level)); ?>
             </span>
         </h2>
 
         <div class="stat-grid">
             <div class="stat-card secure">
                 <div class="stat-label"><?php echo esc_html__('Security Score', 'themewire-security'); ?></div>
-                <div class="stat-number"><?php echo esc_html($stats['security_score']); ?>%</div>
+                <div class="stat-number"><?php echo esc_html($security_score); ?>%</div>
+            </div>
+
+            <div class="stat-card">
+                <div class="stat-label"><?php echo esc_html__('Total Scans', 'themewire-security'); ?></div>
+                <div class="stat-number"><?php echo esc_html($stats['total_scans']); ?></div>
+            </div>
+
+            <div class="stat-card">
+                <div class="stat-label"><?php echo esc_html__('Files Scanned', 'themewire-security'); ?></div>
+                <div class="stat-number"><?php echo esc_html(number_format($stats['total_files_scanned'])); ?></div>
             </div>
 
             <div class="stat-card threat-high">
-                <div class="stat-label"><?php echo esc_html__('Critical Issues', 'themewire-security'); ?></div>
-                <div class="stat-number"><?php echo esc_html($stats['high_severity']); ?></div>
-            </div>
-
-            <div class="stat-card threat-medium">
-                <div class="stat-label"><?php echo esc_html__('High Issues', 'themewire-security'); ?></div>
-                <div class="stat-number"><?php echo esc_html($stats['medium_severity']); ?></div>
-            </div>
-
-            <div class="stat-card threat-low">
-                <div class="stat-label"><?php echo esc_html__('Medium Issues', 'themewire-security'); ?></div>
-                <div class="stat-number"><?php echo esc_html($stats['low_severity']); ?></div>
+                <div class="stat-label"><?php echo esc_html__('Pending Issues', 'themewire-security'); ?></div>
+                <div class="stat-number"><?php echo esc_html($issue_counts['pending']); ?></div>
             </div>
 
             <div class="stat-card secure">
                 <div class="stat-label"><?php echo esc_html__('Issues Resolved', 'themewire-security'); ?></div>
-                <div class="stat-number"><?php echo esc_html($stats['fixed_issues']); ?></div>
+                <div class="stat-number"><?php echo esc_html($issue_counts['resolved']); ?></div>
             </div>
         </div>
 
         <div class="security-summary">
-            <?php if ($stats['scan_date'] !== 'Never'): ?>
+            <?php if ($stats['last_scan_date']): ?>
                 <p><strong><?php echo esc_html__('Last Scan:', 'themewire-security'); ?></strong>
-                    <?php echo esc_html(wp_date('F j, Y \a\t g:i A', strtotime($stats['scan_date']))); ?></p>
+                    <?php echo esc_html(wp_date('F j, Y \a\t g:i A', strtotime($stats['last_scan_date']))); ?></p>
             <?php else: ?>
                 <p><strong><?php echo esc_html__('Status:', 'themewire-security'); ?></strong>
                     <?php echo esc_html__('No scans have been performed yet', 'themewire-security'); ?></p>
             <?php endif; ?>
+
+            <p><strong><?php echo esc_html__('Total Issues Found:', 'themewire-security'); ?></strong>
+                <?php echo esc_html($stats['total_issues_found']); ?></p>
+            <p><strong><?php echo esc_html__('Issues Fixed:', 'themewire-security'); ?></strong>
+                <?php echo esc_html($stats['total_issues_fixed']); ?></p>
 
             <?php if ($next_scan): ?>
                 <p><strong><?php echo esc_html__('Next Scheduled Scan:', 'themewire-security'); ?></strong>
@@ -180,31 +186,16 @@ switch ($stats['threat_level']) {
         <h2 class="card-title"><?php echo esc_html__('Quick Security Actions', 'themewire-security'); ?></h2>
 
         <div class="action-grid">
-            <?php if ($stats['high_severity'] > 0): ?>
-                <div class="action-item critical">
-                    <div class="action-icon">!</div>
+            <?php if ($issue_counts['pending'] > 0): ?>
+                <div class="action-item <?php echo $threat_level === 'critical' ? 'critical' : 'warning'; ?>">
+                    <div class="action-icon"><?php echo $threat_level === 'critical' ? '!' : '*'; ?></div>
                     <div class="action-content">
-                        <h3><?php echo esc_html__('Critical Issues Detected', 'themewire-security'); ?></h3>
+                        <h3><?php echo esc_html__('Security Issues Detected', 'themewire-security'); ?></h3>
                         <p><?php echo sprintf(
-                                esc_html__('You have %d critical security issues that require immediate attention.', 'themewire-security'),
-                                (int) $stats['high_severity']
+                                esc_html__('You have %d security issues that require attention.', 'themewire-security'),
+                                (int) $issue_counts['pending']
                             ); ?></p>
-                        <a href="<?php echo esc_url(admin_url('admin.php?page=themewire-security-issues&severity=high')); ?>"
-                            class="btn-critical">
-                            <?php echo esc_html__('Fix Critical Issues', 'themewire-security'); ?>
-                        </a>
-                    </div>
-                </div>
-            <?php elseif ($stats['medium_severity'] > 0): ?>
-                <div class="action-item warning">
-                    <div class="action-icon">*</div>
-                    <div class="action-content">
-                        <h3><?php echo esc_html__('High Priority Issues', 'themewire-security'); ?></h3>
-                        <p><?php echo sprintf(
-                                esc_html__('You have %d high priority issues to address.', 'themewire-security'),
-                                (int) $stats['medium_severity']
-                            ); ?></p>
-                        <a href="<?php echo esc_url(admin_url('admin.php?page=themewire-security-issues&severity=medium')); ?>"
+                        <a href="<?php echo esc_url(admin_url('admin.php?page=themewire-security-issues')); ?>"
                             class="btn-warning">
                             <?php echo esc_html__('Review Issues', 'themewire-security'); ?>
                         </a>
@@ -212,7 +203,7 @@ switch ($stats['threat_level']) {
                 </div>
             <?php else: ?>
                 <div class="action-item secure">
-                    <div class="action-icon">S</div>
+                    <div class="action-icon">✓</div>
                     <div class="action-content">
                         <h3><?php echo esc_html__('Security Status: Good', 'themewire-security'); ?></h3>
                         <p><?php echo esc_html__('Your site appears to be secure. Continue monitoring with regular scans.', 'themewire-security'); ?></p>
@@ -241,14 +232,6 @@ switch ($stats['threat_level']) {
     <!-- Recent Activity -->
     <div class="card">
         <h2 class="card-title"><?php echo esc_html__('Recent Security Activity', 'themewire-security'); ?></h2>
-
-        <?php
-        // Get recent scans with prepared statement
-        $recent_scans = $wpdb->get_results($wpdb->prepare(
-            "SELECT * FROM {$wpdb->prefix}twss_scans ORDER BY scan_date DESC LIMIT %d",
-            5
-        ), ARRAY_A);
-        ?>
 
         <?php if (!empty($recent_scans)): ?>
             <div class="activity-list">
@@ -296,14 +279,8 @@ switch ($stats['threat_level']) {
 
                         // Fix stale scan
                         if ($is_stale_scan) {
-                            // Update stale scan to completed status
-                            $wpdb->update(
-                                $wpdb->prefix . 'twss_scans',
-                                ['status' => 'completed'],
-                                ['id' => $scan_id],
-                                ['%s'],
-                                ['%d']
-                            );
+                            // Update stale scan to completed status using database class
+                            $database->update_scan_status($scan_id, 'completed');
                             $scan_status = 'completed';
 
                             // Clean up any stale transients

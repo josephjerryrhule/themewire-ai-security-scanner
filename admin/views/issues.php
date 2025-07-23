@@ -18,56 +18,24 @@ $offset = ($page - 1) * $per_page;
 $status_filter = isset($_GET['status_filter']) ? sanitize_text_field($_GET['status_filter']) : '';
 $severity_filter = isset($_GET['severity_filter']) ? sanitize_text_field($_GET['severity_filter']) : '';
 
-// Get the most recent scan
-global $wpdb;
-$scan = $wpdb->get_row("SELECT * FROM {$wpdb->prefix}twss_scans ORDER BY scan_date DESC LIMIT 1", ARRAY_A);
+// Initialize database instance for proper connection handling
+try {
+    $database = new Themewire_Security_Database();
 
-// Build query conditions
-$where_conditions = array();
-$query_params = array();
+    // Get issues with pagination and filtering
+    $all_issues = $database->get_all_issues($status_filter, $per_page, $offset);
+    $issue_counts = $database->get_issue_counts();
 
-if ($scan) {
-    $where_conditions[] = "scan_id = %d";
-    $query_params[] = $scan['id'];
-
-    // Default status filter
-    if (empty($status_filter)) {
-        $where_conditions[] = "status IN ('pending', 'confirmed')";
-    } else {
-        $where_conditions[] = "status = %s";
-        $query_params[] = $status_filter;
+    // Get total issues for pagination
+    $total_issues = $issue_counts['total'];
+    if ($status_filter) {
+        $total_issues = $issue_counts[$status_filter] ?? 0;
     }
-
-    // Severity filter
-    if (!empty($severity_filter)) {
-        $where_conditions[] = "severity = %s";
-        $query_params[] = $severity_filter;
-    }
-}
-
-// Get total count for pagination
-$total_issues = 0;
-if ($scan && !empty($where_conditions)) {
-    $count_query = "SELECT COUNT(*) FROM {$wpdb->prefix}twss_issues WHERE " . implode(' AND ', $where_conditions);
-    $total_issues = $wpdb->get_var($wpdb->prepare($count_query, $query_params));
-}
-
-// Get issues with pagination
-$issues = array();
-if ($scan && !empty($where_conditions)) {
-    $issues_query = "SELECT * FROM {$wpdb->prefix}twss_issues 
-                     WHERE " . implode(' AND ', $where_conditions) . "
-                     ORDER BY CASE 
-                        WHEN severity = 'high' THEN 1
-                        WHEN severity = 'medium' THEN 2
-                        WHEN severity = 'low' THEN 3
-                     END, date_detected ASC
-                     LIMIT %d OFFSET %d";
-
-    $query_params[] = $per_page;
-    $query_params[] = $offset;
-
-    $issues = $wpdb->get_results($wpdb->prepare($issues_query, $query_params), ARRAY_A);
+} catch (Exception $e) {
+    echo '<div class="notice notice-error"><p><strong>Error:</strong> ' . esc_html($e->getMessage()) . '</p></div>';
+    $all_issues = array();
+    $issue_counts = array('pending' => 0, 'resolved' => 0, 'whitelisted' => 0, 'total' => 0);
+    $total_issues = 0;
 }
 
 // Calculate pagination
@@ -240,7 +208,7 @@ function is_wordpress_core_file($file_path)
                         </tr>
                     </thead>
                     <tbody>
-                        <?php foreach ($issues as $issue): ?>
+                        <?php foreach ($all_issues as $issue): ?>
                             <tr>
                                 <td>
                                     <input type="checkbox" class="file-checkbox" value="<?php echo esc_attr($issue['id']); ?>">
