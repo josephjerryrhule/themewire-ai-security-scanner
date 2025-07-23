@@ -64,7 +64,8 @@ fi
 
 # Copy essential files to build directory
 print_status "Copying production files..."
-cp -r . "${BUILD_DIR}/${PLUGIN_NAME}/"
+# Use rsync to exclude build and dist directories to avoid circular copy
+rsync -av --exclude="${BUILD_DIR}" --exclude="${DIST_DIR}" --exclude=".git" . "${BUILD_DIR}/${PLUGIN_NAME}/"
 
 # Navigate to build directory
 cd "${BUILD_DIR}/${PLUGIN_NAME}"
