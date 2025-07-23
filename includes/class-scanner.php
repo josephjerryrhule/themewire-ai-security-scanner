@@ -1158,6 +1158,26 @@ class Themewire_Security_Scanner
             // Store comprehensive scan result in database
             $this->database->store_scan_result($scan_id, $file_path, $file_content, array(), $reason);
 
+            // **ENHANCED**: Add basic corruption/malware pattern detection before AI analysis
+            $pattern_issues = $this->detect_basic_file_issues($file_path, $file_content);
+            if (!empty($pattern_issues)) {
+                foreach ($pattern_issues as $issue) {
+                    $this->database->record_issue(
+                        $scan_id,
+                        $file_path,
+                        $issue['type'],
+                        $issue['severity'],
+                        $issue['description'],
+                        $issue['suggested_fix'],
+                        json_encode(array(
+                            'detection_method' => 'pattern-based',
+                            'scan_reason' => $reason,
+                            'pattern_match' => $issue['pattern']
+                        ))
+                    );
+                }
+            }
+
             // Perform the actual file analysis
             $analysis_result = $this->ai_analyzer->analyze_file($file_path);
 
@@ -3604,6 +3624,45 @@ class Themewire_Security_Scanner
                 if ($ai_result && isset($ai_result['is_malware']) && $ai_result['is_malware']) {
                     $risk_score = isset($ai_result['confidence']) ? $ai_result['confidence'] : 75;
                     $threats = isset($ai_result['indicators']) ? $ai_result['indicators'] : array('malware_detected');
+                    
+                    // **CRITICAL FIX**: Create issue record when AI detects malware
+                    $confidence = isset($ai_result['confidence']) ? $ai_result['confidence'] : 75;
+                    $explanation = isset($ai_result['explanation']) ? $ai_result['explanation'] : 'AI detected malicious content during comprehensive analysis';
+                    $suggested_fix = isset($ai_result['suggested_fix']) ? $ai_result['suggested_fix'] : 'quarantine';
+                    
+                    // Determine severity based on confidence
+                    $severity = 'medium'; // Default
+                    if ($confidence >= 80) {
+                        $severity = 'high';
+                    } elseif ($confidence < 50) {
+                        $severity = 'low';
+                    }
+                    
+                    // Record the issue in the issues table
+                    $this->database->record_issue(
+                        $scan_id,
+                        $file_data->file_path,
+                        'malware',
+                        $severity,
+                        $explanation,
+                        $suggested_fix,
+                        json_encode(array(
+                            'confidence' => $confidence,
+                            'scan_stage' => 'ai_analysis',
+                            'ai_detected' => true,
+                            'indicators' => $threats
+                        ))
+                    );
+                    
+                    $this->logger->warning('AI Analysis detected malicious file', array(
+                        'file' => $file_data->file_path,
+                        'confidence' => $confidence,
+                        'scan_id' => $scan_id,
+                        'threats' => $threats
+                    ));
+                } else {
+                    $risk_score = 0;
+                    $threats = array();
                 }
 
                 // Update scan results with AI analysis using new database method
@@ -3942,6 +4001,106 @@ class Themewire_Security_Scanner
     }
 
     /**
+     * Detect basic file issues using pattern matching for corruption and malware
+     *
+     * @since    1.0.29
+     * @param    string    $file_path     File path
+     * @param    string    $file_content  File content
+     * @return   array     Array of detected issues
+     */
+    private function detect_basic_file_issues($file_path, $file_content)
+    {
+        $issues = array();
+        $file_extension = strtolower(pathinfo($file_path, PATHINFO_EXTENSION));
+        
+        // Skip binary files and very large files
+        if (empty($file_content) || strlen($file_content) > 5 * 1024 * 1024) {
+            return $issues;
+        }
+        
+        // Common malware patterns
+        $malware_patterns = array(
+            'eval\s*\(\s*base64_decode' => 'Base64 obfuscated code execution',
+            'eval\s*\(\s*gzinflate' => 'Compressed obfuscated code',
+            'eval\s*\(\s*str_rot13' => 'ROT13 obfuscated code',
+            'system\s*\(\s*\$_' => 'Direct system command execution',
+            'exec\s*\(\s*\$_' => 'Direct command execution',
+            'shell_exec\s*\(\s*\$_' => 'Shell command execution',
+            'passthru\s*\(\s*\$_' => 'Command passthrough execution',
+            'file_get_contents\s*\(\s*["\']http' => 'Remote file inclusion',
+            'curl_exec\s*\(' => 'Suspicious CURL usage',
+            'fsockopen\s*\(' => 'Network socket connection',
+            'base64_decode\s*\(\s*["\'][A-Za-z0-9+/=]{100,}' => 'Large base64 encoded data',
+            '\$GLOBALS\s*\[\s*["\']_' => 'Global variable manipulation',
+            'chr\s*\(\s*\d+\s*\)\s*\.' => 'Character encoding obfuscation',
+            'create_function\s*\(' => 'Dynamic function creation',
+            'preg_replace\s*\([^,]*\/e' => 'Deprecated code execution via regex',
+            'assert\s*\(\s*\$_' => 'Code execution via assert',
+            '\$_POST\s*\[\s*["\'][^"\']*["\']\s*\]\s*\(' => 'POST data execution',
+            '\$_GET\s*\[\s*["\'][^"\']*["\']\s*\]\s*\(' => 'GET data execution',
+            'mail\s*\([^)]*\$_' => 'Email spam functionality'
+        );
+        
+        // File corruption patterns
+        $corruption_patterns = array(
+            'Fatal error.*in.*on line' => 'PHP fatal error in file',
+            'Parse error.*in.*on line' => 'PHP parse error in file',
+            'syntax error.*in.*on line' => 'PHP syntax error in file',
+            '\x00{10,}' => 'Multiple null bytes (potential corruption)'
+        );
+        
+        // Check for malware patterns
+        foreach ($malware_patterns as $pattern => $description) {
+            if (preg_match('/' . $pattern . '/i', $file_content)) {
+                $issues[] = array(
+                    'type' => 'malware',
+                    'severity' => 'high',
+                    'description' => 'Suspicious pattern detected: ' . $description,
+                    'suggested_fix' => 'quarantine',
+                    'pattern' => $pattern
+                );
+            }
+        }
+        
+        // Check for corruption patterns
+        foreach ($corruption_patterns as $pattern => $description) {
+            if (preg_match('/' . $pattern . '/s', $file_content)) {
+                $issues[] = array(
+                    'type' => 'corruption',
+                    'severity' => 'medium',
+                    'description' => 'File corruption detected: ' . $description,
+                    'suggested_fix' => 'restore_backup',
+                    'pattern' => $pattern
+                );
+            }
+        }
+        
+        // PHP-specific checks
+        if (in_array($file_extension, array('php', 'phtml'))) {
+            // Check for WordPress-specific malware
+            $wp_suspicious = array(
+                'add_action\s*\(\s*["\']wp_head["\'].*base64_decode' => 'Malicious wp_head hook',
+                'add_action\s*\(\s*["\']init["\'].*eval' => 'Malicious init hook',
+                'add_filter\s*\(\s*["\']the_content["\'].*base64' => 'Content filter malware'
+            );
+            
+            foreach ($wp_suspicious as $pattern => $description) {
+                if (preg_match('/' . $pattern . '/i', $file_content)) {
+                    $issues[] = array(
+                        'type' => 'malware',
+                        'severity' => 'critical',
+                        'description' => 'WordPress-specific malware: ' . $description,
+                        'suggested_fix' => 'quarantine',
+                        'pattern' => $pattern
+                    );
+                }
+            }
+        }
+        
+        return $issues;
+    }
+
+    /**
      * Find recently modified files
      *
      * @since    1.0.29
@@ -4197,21 +4356,22 @@ class Themewire_Security_Scanner
 
         // Update the total files count in database with actual scanned files
         // Add fallback in case files_scanned is somehow 0
-        $final_files_count = $scan_state['files_scanned'];
-        if ($final_files_count === 0 && isset($scan_state['total_files']) && $scan_state['total_files'] > 0) {
-            // Use the original total_files as fallback - at least we tried to scan them
-            $final_files_count = $scan_state['total_files'];
-        }
-
-        // TEMPORARY DEBUG: Force a non-zero value to test display
+        // Get the ACTUAL number of files scanned from the database
+        $comprehensive_stats = $this->database->get_comprehensive_scan_stats($scan_id);
+        $final_files_count = isset($comprehensive_stats['total_files']) ? $comprehensive_stats['total_files'] : 0;
+        
+        // Fallback to scan state if database count is zero
         if ($final_files_count === 0) {
-            $final_files_count = 100; // Temporary hardcode for testing
+            $final_files_count = $scan_state['files_scanned'];
+            if ($final_files_count === 0 && isset($scan_state['total_files']) && $scan_state['total_files'] > 0) {
+                // Use the original total_files as fallback - at least we tried to scan them
+                $final_files_count = $scan_state['total_files'];
+            }
         }
 
         // Add debug logging
-        error_log("TWSS Debug: Updating scan $scan_id with files_scanned: " . $scan_state['files_scanned'] .
-            ", total_files: " . ($scan_state['total_files'] ?? 'unknown') .
-            ", final_count: " . $final_files_count);
+        error_log("TWSS Debug: Finalizing scan $scan_id - Database shows $final_files_count files scanned, scan_state shows " . 
+            $scan_state['files_scanned'] . " files_scanned, " . ($scan_state['total_files'] ?? 'unknown') . " total_files");
 
         $this->database->update_scan_total_files($scan_id, $final_files_count);
 
