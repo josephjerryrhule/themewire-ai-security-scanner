@@ -2684,6 +2684,30 @@
           if (response.success && response.data) {
             var data = response.data;
 
+            // Handle recently completed scan detection
+            if (data.recently_completed) {
+              clearInterval(pollInterval);
+              pollInterval = null;
+              
+              updateProgressBar(100, "completed", "Scan completed successfully!");
+              
+              var statusArea = $("#scan-status-area");
+              var startButton = $("#start-scan-button");
+              var stopButton = $("#stop-scan-button");
+              
+              statusArea.html(
+                '<div class="notice notice-success"><p>Scan completed! Found ' +
+                  (data.issues_found || 0) +
+                  " security issues.</p></div>"
+              );
+              startButton.prop("disabled", false).text("Start New Scan");
+              if (stopButton.length) {
+                stopButton.prop("disabled", true);
+              }
+              
+              return; // Exit early
+            }
+
             // Handle optimized scan progress
             if (data.optimized && data.scan_state) {
               var state = data.scan_state;
@@ -2846,6 +2870,37 @@
               if (
                 response.data.message.indexOf("No active scan found") !== -1
               ) {
+                // Check if this might be a recently completed scan
+                var debugInfo = response.data.debug || {};
+                var hasRecentScan = debugInfo.recent_scan_id && debugInfo.recent_scan_id > 0;
+                
+                if (hasRecentScan) {
+                  // This looks like a recently completed scan - stop polling
+                  console.log("Detected recently completed scan - stopping polling");
+                  clearInterval(pollInterval);
+                  pollInterval = null;
+                  updateProgressBar(
+                    100,
+                    "completed",
+                    "Scan completed successfully!"
+                  );
+                  
+                  // Update UI to show completion
+                  var statusArea = $("#scan-status-area");
+                  var startButton = $("#start-scan-button");
+                  var stopButton = $("#stop-scan-button");
+                  
+                  statusArea.html(
+                    '<div class="notice notice-success"><p>Scan completed successfully!</p></div>'
+                  );
+                  startButton.prop("disabled", false).text("Start New Scan");
+                  if (stopButton.length) {
+                    stopButton.prop("disabled", true);
+                  }
+                  
+                  return; // Exit without attempting recovery
+                }
+                
                 // This could be a temporary issue during stage transition
                 // Try to recover by attempting to restart optimized scan processing
                 console.log("Attempting scan recovery...");
