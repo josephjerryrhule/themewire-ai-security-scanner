@@ -2937,7 +2937,7 @@ class Themewire_Security_Scanner
      *
      * @since    1.0.0
      * @param    string    $file    File path
-     * @return   array     Scan result with 'suspicious' flag and 'reason'
+     * @return   array     Scan result with 'suspicious' flag, 'reason', and 'issues'
      */
     private function scan_file_for_malware($file)
     {
@@ -2945,7 +2945,8 @@ class Themewire_Security_Scanner
         if (!file_exists($file) || !is_readable($file)) {
             return array(
                 'suspicious' => false,
-                'reason' => 'File not found or not readable'
+                'reason' => 'File not found or not readable',
+                'issues' => array()
             );
         }
 
@@ -2953,16 +2954,18 @@ class Themewire_Security_Scanner
         if ($content === false) {
             return array(
                 'suspicious' => false,
-                'reason' => 'Failed to read file content'
+                'reason' => 'Failed to read file content',
+                'issues' => array()
             );
         }
 
         $result = array(
             'suspicious' => false,
-            'reason' => ''
+            'reason' => '',
+            'issues' => array()
         );
 
-        // Common malware patterns
+        // Common malware patterns - Enhanced for better detection
         $patterns = array(
             'base64_decode' => '/base64_decode\s*\(/i',
             'eval' => '/eval\s*\(/i',
@@ -2979,13 +2982,40 @@ class Themewire_Security_Scanner
             'gzdecode' => '/gzdecode\s*\(/i',
             'base64' => '/(\'|")([\w+\/=]{30,})(\'|")/i',
             'iframe' => '/<iframe.*src\s*=\s*[\'"].*<\/iframe>/i',
+            // Additional sophisticated malware patterns
+            'eval_base64' => '/eval\s*\(\s*base64_decode/i',
+            'eval_gzinflate' => '/eval\s*\(\s*gzinflate/i',
+            'post_exec' => '/\$_POST.*exec/i',
+            'get_exec' => '/\$_GET.*exec/i',
+            'file_get_contents_http' => '/file_get_contents\s*\(\s*[\'"]https?:/i',
+            'preg_replace_eval' => '/preg_replace\s*\([^,]*\/e/i',
+            'create_function' => '/create_function\s*\(/i',
+            'php_in_uploads' => strpos($file, 'wp-content/uploads') !== false && pathinfo($file, PATHINFO_EXTENSION) === 'php'
         );
 
         foreach ($patterns as $name => $pattern) {
-            if (preg_match($pattern, $content)) {
+            $is_match = false;
+
+            if ($name === 'php_in_uploads') {
+                $is_match = $pattern; // This is already a boolean
+            } else {
+                $is_match = preg_match($pattern, $content);
+            }
+
+            if ($is_match) {
                 $result['suspicious'] = true;
                 $result['reason'] = sprintf(__('Contains potential malware indicator: %s', 'themewire-security'), $name);
-                return $result;
+
+                // Add to issues array for compatibility
+                $result['issues'][] = array(
+                    'type' => 'malware',
+                    'severity' => $this->get_pattern_severity($name),
+                    'description' => $result['reason'],
+                    'pattern' => $name,
+                    'suggested_fix' => 'quarantine'
+                );
+
+                return $result; // Return immediately on first match
             }
         }
 
@@ -2993,10 +3023,38 @@ class Themewire_Security_Scanner
         if ($this->is_heavily_obfuscated($content)) {
             $result['suspicious'] = true;
             $result['reason'] = __('Contains heavily obfuscated code', 'themewire-security');
+            $result['issues'][] = array(
+                'type' => 'obfuscation',
+                'severity' => 'high',
+                'description' => $result['reason'],
+                'pattern' => 'obfuscation',
+                'suggested_fix' => 'quarantine'
+            );
             return $result;
         }
 
         return $result;
+    }
+
+    /**
+     * Get severity level for a malware pattern
+     *
+     * @since    1.0.49
+     * @param    string    $pattern_name    Pattern name
+     * @return   string    Severity level
+     */
+    private function get_pattern_severity($pattern_name)
+    {
+        $high_severity = array('eval', 'eval_base64', 'eval_gzinflate', 'system', 'shell_exec', 'exec', 'php_in_uploads', 'post_exec', 'get_exec');
+        $medium_severity = array('base64_decode', 'gzinflate', 'str_rot13', 'create_function', 'preg_replace_eval');
+
+        if (in_array($pattern_name, $high_severity)) {
+            return 'high';
+        } elseif (in_array($pattern_name, $medium_severity)) {
+            return 'medium';
+        }
+
+        return 'low';
     }
 
     /**

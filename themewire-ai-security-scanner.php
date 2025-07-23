@@ -20,8 +20,8 @@ if (!defined('WPINC')) {
     die;
 }
 
-// Define plugin constants
-define('THEMEWIRE_SECURITY_VERSION', '1.0.48');
+//Define plugin constants
+define('THEMEWIRE_SECURITY_VERSION', '1.0.49');
 define('TWSS_VERSION', '1.0.49');
 define('TWSS_PLUGIN_DIR', plugin_dir_path(__FILE__));
 define('TWSS_PLUGIN_URL', plugin_dir_url(__FILE__));

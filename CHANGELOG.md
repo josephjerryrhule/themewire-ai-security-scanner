@@ -1,5 +1,28 @@
 # Changelog
 
+## [1.0.49] - 2025-07-23
+
+### Fixed
+- **Critical Malware Detection Issue**: Fixed major bug where malware detection was working but not saving detected issues
+  - Enhanced `scan_file_for_malware()` method to return both legacy format and new 'issues' array
+  - Added proper severity classification for different malware patterns (high/medium/low)
+  - Improved pattern detection for sophisticated malware including eval+base64, POST/GET execution, PHP in uploads
+  - Fixed integration between detection methods and database storage
+  - Malware files are now properly recorded in the issues table and displayed to users
+
+### Enhanced
+- **Malware Pattern Coverage**: Added detection for more sophisticated malware types
+  - Enhanced base64+eval detection combinations
+  - Added preg_replace /e flag detection (deprecated but dangerous)
+  - Improved detection of PHP files in uploads directory (high risk)
+  - Added create_function() detection (deprecated and risky)
+  - Better file_get_contents with HTTP detection for remote inclusions
+
+### Technical
+- **Detection Integration**: Improved compatibility between different scanning methods
+- **Issue Recording**: Enhanced database integration for detected malware
+- **Pattern Severity**: Added intelligent severity classification based on threat level
+
 ## [1.0.48] - 2025-07-23
 
 ### Fixed
