@@ -184,11 +184,19 @@ class Themewire_Security_Database
     {
         global $wpdb;
 
-        $wpdb->update(
+        // Add debug logging
+        error_log("TWSS Debug: Database update_scan_total_files called for scan_id: $scan_id, total_files: $total_files");
+
+        $result = $wpdb->update(
             $wpdb->prefix . 'twss_scans',
             array('total_files' => $total_files),
             array('id' => $scan_id)
         );
+        
+        // Log the result
+        error_log("TWSS Debug: Database update result: " . ($result !== false ? "success ($result rows affected)" : "failed"));
+        
+        return $result;
     }
 
     /**

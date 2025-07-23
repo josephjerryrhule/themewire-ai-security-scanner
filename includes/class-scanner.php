@@ -2943,7 +2943,7 @@ class Themewire_Security_Scanner
                     "SELECT message FROM {$wpdb->prefix}twss_scan_progress WHERE scan_id = %d ORDER BY timestamp DESC",
                     $scan_id
                 ), ARRAY_A);
-                
+
                 foreach ($progress_messages as $progress) {
                     $message = $progress['message'];
                     // Try different message patterns
@@ -2955,7 +2955,7 @@ class Themewire_Security_Scanner
                         $files_scanned = max($files_scanned, intval($matches[1]));
                     }
                 }
-                
+
                 // If still 0, count unique issues as a minimum estimate
                 if ($files_scanned === 0) {
                     $unique_files = $wpdb->get_var($wpdb->prepare(
@@ -2964,7 +2964,7 @@ class Themewire_Security_Scanner
                     ));
                     $files_scanned = max($files_scanned, intval($unique_files));
                 }
-                
+
                 // Final fallback: estimate based on scan progress entries (each entry ~= 10-20 files)
                 if ($files_scanned === 0) {
                     $progress_count = count($progress_messages);
@@ -4037,6 +4037,12 @@ class Themewire_Security_Scanner
             // Use the original total_files as fallback - at least we tried to scan them
             $final_files_count = $scan_state['total_files'];
         }
+        
+        // Add debug logging
+        error_log("TWSS Debug: Updating scan $scan_id with files_scanned: " . $scan_state['files_scanned'] . 
+                 ", total_files: " . ($scan_state['total_files'] ?? 'unknown') . 
+                 ", final_count: " . $final_files_count);
+        
         $this->database->update_scan_total_files($scan_id, $final_files_count);
 
         $this->set_scan_in_progress(false);
