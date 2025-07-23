@@ -255,7 +255,7 @@ switch ($stats['threat_level']) {
                 <?php foreach ($recent_scans as $recent_scan):
                     $scan_id = intval($recent_scan['id']);
                     $issues_count = intval($recent_scan['issues_found'] ?? 0);
-                    $files_count = intval($recent_scan['files_scanned'] ?? 0);
+                    $files_count = intval($recent_scan['total_files'] ?? 0);
                     $scan_status = sanitize_text_field($recent_scan['status'] ?? 'unknown');
                     $scan_date = sanitize_text_field($recent_scan['scan_date'] ?? '');
 

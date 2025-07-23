@@ -47,11 +47,11 @@ $build_date = date('Y-m-d', filectime($plugin_file));
 // Get last modified date from plugin file modification time
 $last_modified = date('Y-m-d H:i:s', filemtime($plugin_file));
 
-// Try to get last modified by from git, fallback to unknown
-$modified_by = 'unknown';
+// Try to get last modified by from git, fallback to Themewire
+$modified_by = 'Themewire';
 $git_cmd = 'cd ' . escapeshellarg(dirname($plugin_file)) . ' && git log -1 --pretty=format:"%an" -- ' . escapeshellarg(basename($plugin_file));
 $git_output = @shell_exec($git_cmd);
-if ($git_output) {
+if ($git_output && trim($git_output) !== '') {
     $modified_by = trim($git_output);
 }
 

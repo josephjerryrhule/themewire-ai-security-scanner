@@ -174,6 +174,24 @@ class Themewire_Security_Database
     }
 
     /**
+     * Update scan total files count
+     *
+     * @since    1.0.0
+     * @param    int    $scan_id      The scan ID
+     * @param    int    $total_files  The total number of files scanned
+     */
+    public function update_scan_total_files($scan_id, $total_files)
+    {
+        global $wpdb;
+
+        $wpdb->update(
+            $wpdb->prefix . 'twss_scans',
+            array('total_files' => $total_files),
+            array('id' => $scan_id)
+        );
+    }
+
+    /**
      * Add an issue to the database
      *
      * @since    1.0.0
