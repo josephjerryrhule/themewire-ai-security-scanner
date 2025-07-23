@@ -40,6 +40,15 @@ class Themewire_Security_AI_Analyzer
     private $openrouter_client = null;
 
     /**
+     * Groq API client.
+     *
+     * @since    1.0.31
+     * @access   private
+     * @var      object    $groq_client
+     */
+    private $groq_client = null;
+
+    /**
      * Files queued for AI analysis.
      *
      * @since    1.0.0
@@ -86,6 +95,12 @@ class Themewire_Security_AI_Analyzer
                 // Initialize OpenRouter client
                 $this->init_openrouter_client($api_key);
             }
+        } else if ($ai_provider === 'groq') {
+            $api_key = get_option('twss_groq_api_key', '');
+            if (!empty($api_key)) {
+                // Initialize Groq client
+                $this->init_groq_client($api_key);
+            }
         }
 
         // If no API key is provided, we'll use the fallback method
@@ -128,6 +143,19 @@ class Themewire_Security_AI_Analyzer
         // Initialize OpenRouter client
         $this->openrouter_client = new stdClass();
         $this->openrouter_client->api_key = $api_key;
+    }
+
+    /**
+     * Initialize Groq API client
+     *
+     * @since    1.0.31
+     * @param    string    $api_key    Groq API key
+     */
+    private function init_groq_client($api_key)
+    {
+        // Initialize Groq client
+        $this->groq_client = new stdClass();
+        $this->groq_client->api_key = $api_key;
     }
 
     /**
@@ -206,6 +234,8 @@ class Themewire_Security_AI_Analyzer
             return $this->analyze_with_gemini($file_path, $file_content, $file_extension);
         } else if ($ai_provider === 'openrouter' && $this->openrouter_client) {
             return $this->analyze_with_openrouter($file_path, $file_content, $file_extension);
+        } else if ($ai_provider === 'groq' && $this->groq_client) {
+            return $this->analyze_with_groq($file_path, $file_content, $file_extension);
         } else {
             // Fallback to simple analysis
             return $this->analyze_with_fallback($file_path, $file_content, $file_extension);
@@ -273,6 +303,29 @@ class Themewire_Security_AI_Analyzer
             $prompt = $this->build_analysis_prompt($file_path, $file_content, $file_extension);
 
             $result = $this->send_openrouter_request($prompt);
+
+            return $this->parse_ai_response($result);
+        } catch (Exception $e) {
+            // In case of API failure, fall back to simple analysis
+            return $this->analyze_with_fallback($file_path, $file_content, $file_extension);
+        }
+    }
+
+    /**
+     * Analyze file with Groq API
+     *
+     * @since    1.0.31
+     * @param    string    $file_path       File path
+     * @param    string    $file_content    File content
+     * @param    string    $file_extension  File extension
+     * @return   array     Analysis result
+     */
+    private function analyze_with_groq($file_path, $file_content, $file_extension)
+    {
+        try {
+            $prompt = $this->build_analysis_prompt($file_path, $file_content, $file_extension);
+
+            $result = $this->send_groq_request($prompt);
 
             return $this->parse_ai_response($result);
         } catch (Exception $e) {
@@ -1279,6 +1332,85 @@ class Themewire_Security_AI_Analyzer
     }
 
     /**
+     * Send request to Groq API
+     *
+     * @since    1.0.31
+     * @param    string    $prompt    The prompt to send to the API
+     * @return   string              The API response
+     * @throws   Exception           On API error
+     */
+    private function send_groq_request($prompt)
+    {
+        $api_key = $this->groq_client->api_key;
+        $url = 'https://api.groq.com/openai/v1/chat/completions';
+
+        $headers = array(
+            'Content-Type: application/json',
+            'Authorization: Bearer ' . $api_key
+        );
+
+        $data = array(
+            'model' => get_option('twss_groq_model', 'llama-3.3-70b-versatile'),
+            'messages' => array(
+                array(
+                    'role' => 'system',
+                    'content' => 'You are a cybersecurity expert specialized in WordPress security and malware analysis.'
+                ),
+                array(
+                    'role' => 'user',
+                    'content' => $prompt
+                )
+            ),
+            'temperature' => 0.2,
+            'max_tokens' => 500
+        );
+
+        $curl = curl_init($url);
+        curl_setopt($curl, CURLOPT_RETURNTRANSFER, true);
+        curl_setopt($curl, CURLOPT_POST, true);
+        curl_setopt($curl, CURLOPT_POSTFIELDS, json_encode($data));
+        curl_setopt($curl, CURLOPT_HTTPHEADER, $headers);
+        curl_setopt($curl, CURLOPT_TIMEOUT, 15);
+
+        $response = curl_exec($curl);
+        $err = curl_error($curl);
+
+        curl_close($curl);
+
+        if ($err) {
+            $this->rate_limited_error_log("Groq API cURL Error: {$err}");
+            throw new Exception('API request error: ' . $err);
+        }
+
+        $response_data = json_decode($response, true);
+
+        if (isset($response_data['choices'][0]['message']['content'])) {
+            return $response_data['choices'][0]['message']['content'];
+        } else {
+            // Handle specific API errors
+            if (isset($response_data['error'])) {
+                $error = $response_data['error'];
+                $error_code = isset($error['code']) ? $error['code'] : 0;
+                $error_message = isset($error['message']) ? $error['message'] : 'Unknown API error';
+
+                // Handle quota/credit exhausted errors
+                if ($error_code === 429 || strpos($error_message, 'quota') !== false || strpos($error_message, 'rate') !== false) {
+                    $this->rate_limited_error_log('Groq API Rate Limited - Falling back to pattern-based analysis', 900);
+                    throw new Exception('AI analysis temporarily unavailable due to rate limits. Using pattern-based analysis instead.');
+                }
+
+                // Handle other API errors
+                $this->rate_limited_error_log("Groq API Error [{$error_code}]: {$error_message}");
+                throw new Exception("AI analysis service error. Using pattern-based detection instead.");
+            }
+
+            // Log for debugging with rate limiting
+            $this->rate_limited_error_log('Groq API: Invalid response structure received');
+            throw new Exception('AI service returned invalid response. Using fallback analysis.');
+        }
+    }
+
+    /**
      * Build prompt for AI analysis
      *
      * @since    1.0.0
@@ -1866,6 +1998,207 @@ class Themewire_Security_AI_Analyzer
 
             $curl = curl_init();
             curl_setopt($curl, CURLOPT_URL, 'https://openrouter.ai/api/v1/chat/completions');
+            curl_setopt($curl, CURLOPT_RETURNTRANSFER, true);
+            curl_setopt($curl, CURLOPT_POST, true);
+            curl_setopt($curl, CURLOPT_POSTFIELDS, json_encode($data));
+            curl_setopt($curl, CURLOPT_HTTPHEADER, $headers);
+            curl_setopt($curl, CURLOPT_TIMEOUT, 10);
+
+            $response = curl_exec($curl);
+            $status_code = curl_getinfo($curl, CURLINFO_HTTP_CODE);
+            $error = curl_error($curl);
+            curl_close($curl);
+
+            if ($error) {
+                return array(
+                    'success' => false,
+                    'error' => $error
+                );
+            }
+
+            $response_data = json_decode($response, true);
+
+            if ($status_code === 200 && isset($response_data['choices'][0]['message']['content'])) {
+                return array(
+                    'success' => true,
+                    'response' => $response_data['choices'][0]['message']['content']
+                );
+            } else {
+                $error_message = 'Unknown error';
+                if (isset($response_data['error']['message'])) {
+                    $error_message = $response_data['error']['message'];
+                }
+
+                return array(
+                    'success' => false,
+                    'error' => $error_message,
+                    'status_code' => $status_code
+                );
+            }
+        } catch (Exception $e) {
+            return array(
+                'success' => false,
+                'error' => $e->getMessage()
+            );
+        }
+    }
+
+    /**
+     * Test Groq API key and return available models
+     *
+     * @since    1.0.31
+     * @param    string    $api_key    The Groq API key to test
+     * @return   array                 Success status, message, and available models
+     */
+    public function test_groq_api_key($api_key)
+    {
+        try {
+            // Test with a simple model list request
+            $headers = array(
+                'Content-Type: application/json',
+                'Authorization: Bearer ' . $api_key
+            );
+
+            $curl = curl_init();
+            curl_setopt($curl, CURLOPT_URL, 'https://api.groq.com/openai/v1/models');
+            curl_setopt($curl, CURLOPT_RETURNTRANSFER, true);
+            curl_setopt($curl, CURLOPT_HTTPHEADER, $headers);
+            curl_setopt($curl, CURLOPT_TIMEOUT, 10);
+
+            $response = curl_exec($curl);
+            $status_code = curl_getinfo($curl, CURLINFO_HTTP_CODE);
+            $error = curl_error($curl);
+            curl_close($curl);
+
+            if ($error) {
+                return array(
+                    'success' => false,
+                    'message' => 'Connection error: ' . $error
+                );
+            }
+
+            if ($status_code !== 200) {
+                return array(
+                    'success' => false,
+                    'message' => 'Invalid API key or connection failed'
+                );
+            }
+
+            $response_data = json_decode($response, true);
+
+            if (!isset($response_data['data']) || !is_array($response_data['data'])) {
+                return array(
+                    'success' => false,
+                    'message' => 'Invalid response from Groq API'
+                );
+            }
+
+            $models = $response_data['data'];
+            $available_models = array();
+
+            // Preferred models in order
+            $preferred_models = array(
+                'llama-3.3-70b-versatile' => 'Llama 3.3 70B (Best performance)',
+                'llama-3.1-70b-versatile' => 'Llama 3.1 70B (High quality)',
+                'gemma2-9b-it' => 'Gemma 2 9B (Fast and efficient)',
+                'llama-3.1-8b-instant' => 'Llama 3.1 8B (Ultra fast)'
+            );
+
+            $best_model = null;
+
+            // Find available models
+            foreach ($models as $model) {
+                $model_id = $model['id'];
+                if (isset($preferred_models[$model_id])) {
+                    $available_models[$model_id] = $preferred_models[$model_id];
+                    if (!$best_model) {
+                        $best_model = $model_id;
+                    }
+                }
+            }
+
+            if ($best_model) {
+                // Test the best model with a simple request
+                $test_result = $this->test_groq_model($api_key, $best_model);
+
+                if ($test_result['success']) {
+                    // Update plugin setting to use the working model
+                    update_option('twss_groq_model', $best_model);
+
+                    $message = "✅ Groq API key is working perfectly!\n\n";
+                    $message .= "🚀 Ultra-Fast AI Analysis Available:\n";
+                    $message .= "• Best Model: " . $preferred_models[$best_model] . "\n";
+                    $message .= "• Speed: Extremely fast inference (< 1 second)\n";
+                    $message .= "• Quality: High-quality malware detection\n\n";
+
+                    if (count($available_models) > 1) {
+                        $message .= "📋 Other Available Models:\n";
+                        foreach ($available_models as $model_id => $description) {
+                            if ($model_id !== $best_model) {
+                                $message .= "• " . $description . "\n";
+                            }
+                        }
+                        $message .= "\n";
+                    }
+
+                    $message .= "🎯 Ready for lightning-fast AI security scanning!";
+
+                    return array(
+                        'success' => true,
+                        'message' => $message,
+                        'best_model' => $best_model,
+                        'available_models' => $available_models,
+                        'total_models' => count($models)
+                    );
+                } else {
+                    return array(
+                        'success' => false,
+                        'message' => 'API key valid but model test failed: ' . $test_result['error']
+                    );
+                }
+            } else {
+                return array(
+                    'success' => false,
+                    'message' => 'API key valid but no preferred models available. Found ' . count($models) . ' models total.'
+                );
+            }
+        } catch (Exception $e) {
+            return array(
+                'success' => false,
+                'message' => 'Error testing Groq API: ' . $e->getMessage()
+            );
+        }
+    }
+
+    /**
+     * Test a specific Groq model
+     *
+     * @since    1.0.31
+     * @param    string    $api_key    The API key
+     * @param    string    $model      The model to test
+     * @return   array                 Test result
+     */
+    private function test_groq_model($api_key, $model)
+    {
+        try {
+            $data = array(
+                'model' => $model,
+                'messages' => array(
+                    array(
+                        'role' => 'user',
+                        'content' => 'Test'
+                    )
+                ),
+                'max_tokens' => 3
+            );
+
+            $headers = array(
+                'Content-Type: application/json',
+                'Authorization: Bearer ' . $api_key
+            );
+
+            $curl = curl_init();
+            curl_setopt($curl, CURLOPT_URL, 'https://api.groq.com/openai/v1/chat/completions');
             curl_setopt($curl, CURLOPT_RETURNTRANSFER, true);
             curl_setopt($curl, CURLOPT_POST, true);
             curl_setopt($curl, CURLOPT_POSTFIELDS, json_encode($data));

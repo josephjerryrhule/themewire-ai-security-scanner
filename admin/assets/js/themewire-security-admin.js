@@ -3092,4 +3092,61 @@
       },
     });
   });
+
+  // Test Groq API Key
+  $(document).on("click", "#test-groq-api", function (e) {
+    e.preventDefault();
+    var button = $(this);
+    var apiKey = $("#twss_groq_api_key").val();
+    var statusSpan = $("#groq-api-test-result");
+
+    if (!apiKey) {
+      statusSpan.html(
+        '<span style="color: #d63638;">Please enter an API key first</span>'
+      );
+      return;
+    }
+
+    button.prop("disabled", true).text("Testing...");
+    statusSpan.html(
+      '<span style="color: #FF7342;">Testing connection...</span>'
+    );
+
+    $.ajax({
+      url: twss_data.ajax_url,
+      type: "POST",
+      data: {
+        action: "twss_test_groq_api",
+        api_key: apiKey,
+        nonce: twss_data.nonce,
+      },
+      success: function (response) {
+        if (response.success) {
+          statusSpan.html(
+            '<span style="color: #46b450;">✓ ' +
+              response.data.message +
+              "</span>"
+          );
+          // Show model selection when API test is successful
+          $(".groq-model-selection").show();
+        } else {
+          statusSpan.html(
+            '<span style="color: #d63638;">✗ ' +
+              response.data.message +
+              "</span>"
+          );
+          // Hide model selection if API test fails
+          $(".groq-model-selection").hide();
+        }
+      },
+      error: function () {
+        statusSpan.html(
+          '<span style="color: #d63638;">✗ Connection failed</span>'
+        );
+      },
+      complete: function () {
+        button.prop("disabled", false).text("Test API Key");
+      },
+    });
+  });
 })(jQuery);

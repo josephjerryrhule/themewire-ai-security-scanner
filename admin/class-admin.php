@@ -258,6 +258,36 @@ class Themewire_Security_Admin
     }
 
     /**
+     * AJAX handler for testing Groq API key
+     *
+     * @since    1.0.31
+     */
+    public function ajax_test_groq_api()
+    {
+        check_ajax_referer('twss_nonce', 'nonce');
+
+        if (!current_user_can('manage_options')) {
+            wp_send_json_error(__('You do not have permission to perform this action', 'themewire-security'));
+            return;
+        }
+
+        $api_key = sanitize_text_field($_POST['api_key']);
+
+        if (empty($api_key)) {
+            wp_send_json_error(__('API key is required', 'themewire-security'));
+            return;
+        }
+
+        $result = $this->ai_analyzer->test_groq_api_key($api_key);
+
+        if ($result['success']) {
+            wp_send_json_success($result);
+        } else {
+            wp_send_json_error($result);
+        }
+    }
+
+    /**
      * AJAX handler for bulk file actions
      *
      * @since    1.0.2

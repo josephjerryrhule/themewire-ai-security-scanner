@@ -18,6 +18,8 @@ if (isset($_POST['twss_settings_submit'])) {
     update_option('twss_gemini_api_key', sanitize_text_field($_POST['twss_gemini_api_key']));
     update_option('twss_openrouter_api_key', sanitize_text_field($_POST['twss_openrouter_api_key']));
     update_option('twss_openrouter_model', sanitize_text_field($_POST['twss_openrouter_model']));
+    update_option('twss_groq_api_key', sanitize_text_field($_POST['twss_groq_api_key']));
+    update_option('twss_groq_model', sanitize_text_field($_POST['twss_groq_model']));
     update_option('twss_use_fallback_ai', isset($_POST['twss_use_fallback_ai']) ? true : false);
     update_option('twss_scheduled_time', sanitize_text_field($_POST['twss_scheduled_time']));
     update_option('twss_auto_fix', isset($_POST['twss_auto_fix']) ? true : false);
@@ -38,6 +40,8 @@ $openai_api_key = get_option('twss_openai_api_key', '');
 $gemini_api_key = get_option('twss_gemini_api_key', '');
 $openrouter_api_key = get_option('twss_openrouter_api_key', '');
 $openrouter_model = get_option('twss_openrouter_model', 'openai/gpt-3.5-turbo');
+$groq_api_key = get_option('twss_groq_api_key', '');
+$groq_model = get_option('twss_groq_model', 'llama-3.3-70b-versatile');
 $use_fallback_ai = get_option('twss_use_fallback_ai', true);
 $use_fallback_ai = get_option('twss_use_fallback_ai', true);
 $scheduled_time = get_option('twss_scheduled_time', '02:00');
@@ -67,6 +71,7 @@ $remove_data = get_option('twss_remove_data_on_uninstall', false);
                             <option value="openai" <?php selected($ai_provider, 'openai'); ?>><?php _e('OpenAI (ChatGPT)', 'themewire-security'); ?></option>
                             <option value="gemini" <?php selected($ai_provider, 'gemini'); ?>><?php _e('Google Gemini', 'themewire-security'); ?></option>
                             <option value="openrouter" <?php selected($ai_provider, 'openrouter'); ?>><?php _e('OpenRouter (Multi-Model)', 'themewire-security'); ?></option>
+                            <option value="groq" <?php selected($ai_provider, 'groq'); ?>><?php _e('Groq (Ultra Fast)', 'themewire-security'); ?></option>
                             <option value="fallback" <?php selected($ai_provider, 'fallback'); ?>><?php _e('Built-in Analysis Only', 'themewire-security'); ?></option>
                         </select>
                         <p class="description"><?php _e('Select your preferred AI provider for malware analysis.', 'themewire-security'); ?></p>
@@ -151,6 +156,48 @@ $remove_data = get_option('twss_remove_data_on_uninstall', false);
                             <p><strong>Context Length:</strong> <span id="model-info-context"></span></p>
                         </div>
                         <p class="description"><?php _e('Choose the AI model for malware analysis. Free models have daily limits but no cost. Paid models offer better performance and higher limits.', 'themewire-security'); ?></p>
+                    </td>
+                </tr>
+
+                <!-- Groq Settings -->
+                <tr class="groq-settings" <?php echo $ai_provider !== 'groq' ? 'style="display:none;"' : ''; ?>>
+                    <th scope="row">
+                        <label><?php _e('Groq Authentication', 'themewire-security'); ?></label>
+                    </th>
+                    <td>
+                        <div class="twss-auth-method">
+                            <div class="auth-option">
+                                <h4><?php _e('API Key', 'themewire-security'); ?></h4>
+                                <input type="text" name="twss_groq_api_key" id="twss_groq_api_key" value="<?php echo esc_attr($groq_api_key); ?>" class="regular-text" placeholder="gsk_..." />
+                                <button type="button" id="test-groq-api" class="button"><?php _e('Test API Key', 'themewire-security'); ?></button>
+                                <div id="groq-api-test-result"></div>
+                                <p class="description">
+                                    <?php _e('Enter your Groq API key. Get one free at', 'themewire-security'); ?>
+                                    <a href="https://console.groq.com/keys" target="_blank">https://console.groq.com/keys</a>
+                                    <?php _e(' - Ultra-fast inference with generous free tier!', 'themewire-security'); ?>
+                                </p>
+                                <p class="description" style="color: #46b450; font-weight: bold;">
+                                    <?php _e('⚡ Groq offers the fastest AI inference available with high-quality Llama models and excellent free tier limits!', 'themewire-security'); ?>
+                                </p>
+                            </div>
+                        </div>
+                    </td>
+                </tr>
+
+                <tr class="groq-settings groq-model-selection" <?php echo ($ai_provider !== 'groq' || empty($groq_api_key)) ? 'style="display:none;"' : ''; ?>>
+                    <th scope="row">
+                        <label for="twss_groq_model"><?php _e('Groq Model', 'themewire-security'); ?></label>
+                    </th>
+                    <td>
+                        <select name="twss_groq_model" id="twss_groq_model" class="regular-text">
+                            <option value="llama-3.3-70b-versatile" <?php selected($groq_model, 'llama-3.3-70b-versatile'); ?>>Llama 3.3 70B Versatile (Best Performance)</option>
+                            <option value="llama-3.1-70b-versatile" <?php selected($groq_model, 'llama-3.1-70b-versatile'); ?>>Llama 3.1 70B Versatile (High Quality)</option>
+                            <option value="gemma2-9b-it" <?php selected($groq_model, 'gemma2-9b-it'); ?>>Gemma 2 9B (Fast & Efficient)</option>
+                            <option value="llama-3.1-8b-instant" <?php selected($groq_model, 'llama-3.1-8b-instant'); ?>>Llama 3.1 8B Instant (Ultra Fast)</option>
+                        </select>
+                        <p class="description">
+                            <?php _e('Choose your preferred Groq model. All models are extremely fast with excellent free tier limits. Llama 3.3 70B offers the best analysis quality.', 'themewire-security'); ?>
+                        </p>
                     </td>
                 </tr>
 
@@ -274,17 +321,25 @@ $remove_data = get_option('twss_remove_data_on_uninstall', false);
                     $('.openai-settings').show();
                     $('.gemini-settings').hide();
                     $('.openrouter-settings').hide();
+                    $('.groq-settings').hide();
                 } else if (provider === 'gemini') {
                     $('.openai-settings').hide();
                     $('.gemini-settings').show();
                     $('.openrouter-settings').hide();
+                    $('.groq-settings').hide();
                 } else if (provider === 'openrouter') {
                     $('.openai-settings').hide();
                     $('.gemini-settings').hide();
                     $('.openrouter-settings').show();
+                    $('.groq-settings').hide();
                     updateModelInfo(); // Show model info when OpenRouter is selected
+                } else if (provider === 'groq') {
+                    $('.openai-settings').hide();
+                    $('.gemini-settings').hide();
+                    $('.openrouter-settings').hide();
+                    $('.groq-settings').show();
                 } else {
-                    $('.openai-settings, .gemini-settings, .openrouter-settings').hide();
+                    $('.openai-settings, .gemini-settings, .openrouter-settings, .groq-settings').hide();
                 }
             });
 
