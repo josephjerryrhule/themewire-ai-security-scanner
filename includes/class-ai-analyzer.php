@@ -1184,7 +1184,7 @@ class Themewire_Security_AI_Analyzer
         );
 
         $data = array(
-            'model' => get_option('twss_openrouter_model', 'qwen/qwen3-235b-a22b-07-25:free'), // Updated to working model
+            'model' => get_option('twss_openrouter_model', 'openai/gpt-3.5-turbo'), // Updated to reliable model
             'messages' => array(
                 array(
                     'role' => 'system',
@@ -1233,7 +1233,7 @@ class Themewire_Security_AI_Analyzer
                     $this->rate_limited_error_log("OpenRouter Model Not Available: {$error_message} - Trying fallback model");
 
                     // Try with a reliable fallback model
-                    $fallback_models = ['qwen/qwen3-235b-a22b-07-25:free', 'moonshotai/kimi-k2:free', 'microsoft/wizardlm-2-8x22b:free', 'google/gemma-2-9b-it:free'];
+                    $fallback_models = ['openai/gpt-3.5-turbo', 'anthropic/claude-3-haiku', 'google/gemma-2-9b-it:free', 'meta-llama/llama-3-8b-instruct:free'];
                     $current_model = get_option('twss_openrouter_model', 'openai/gpt-3.5-turbo');
 
                     foreach ($fallback_models as $fallback_model) {
@@ -1689,75 +1689,215 @@ class Themewire_Security_AI_Analyzer
     }
 
     /**
-     * Test OpenRouter API key
+     * Test OpenRouter API key and find available models
      *
      * @since    1.0.1
      * @param    string    $api_key    The OpenRouter API key to test
-     * @return   array                 Success status and message
+     * @return   array                 Success status, message, and available models
      */
     public function test_openrouter_api_key($api_key)
     {
         try {
+            // First check if the API key is valid
+            $headers = array(
+                'Content-Type: application/json',
+                'Authorization: Bearer ' . $api_key
+            );
+
+            $curl = curl_init();
+            curl_setopt($curl, CURLOPT_URL, 'https://openrouter.ai/api/v1/auth/key');
+            curl_setopt($curl, CURLOPT_RETURNTRANSFER, true);
+            curl_setopt($curl, CURLOPT_HTTPHEADER, $headers);
+            curl_setopt($curl, CURLOPT_TIMEOUT, 10);
+
+            $auth_response = curl_exec($curl);
+            $auth_status = curl_getinfo($curl, CURLINFO_HTTP_CODE);
+            $auth_err = curl_error($curl);
+            curl_close($curl);
+
+            if ($auth_err) {
+                return array(
+                    'success' => false,
+                    'message' => 'Connection error: ' . $auth_err
+                );
+            }
+
+            if ($auth_status !== 200) {
+                return array(
+                    'success' => false,
+                    'message' => 'Invalid API key or connection failed'
+                );
+            }
+
+            $auth_data = json_decode($auth_response, true);
+            
+            if (!isset($auth_data['data'])) {
+                return array(
+                    'success' => false,
+                    'message' => 'Invalid API key format'
+                );
+            }
+
+            $account_info = $auth_data['data'];
+            $is_free_tier = isset($account_info['is_free_tier']) ? $account_info['is_free_tier'] : false;
+            $usage = isset($account_info['usage']) ? $account_info['usage'] : 0;
+            $limit_remaining = isset($account_info['limit_remaining']) ? $account_info['limit_remaining'] : null;
+
+            // Test models in order of preference
+            $test_models = array(
+                'openai/gpt-3.5-turbo' => 'GPT-3.5 Turbo (Most reliable)',
+                'anthropic/claude-3-haiku' => 'Claude 3 Haiku (Fast and accurate)',
+                'google/gemma-2-9b-it:free' => 'Gemma 2 9B (Free tier)',
+                'meta-llama/llama-3-8b-instruct:free' => 'Llama 3 8B (Free tier)'
+            );
+
+            $available_model = null;
+            $test_results = array();
+
+            foreach ($test_models as $model => $description) {
+                $test_result = $this->test_specific_model($api_key, $model);
+                $test_results[$model] = $test_result;
+                
+                if ($test_result['success'] && !$available_model) {
+                    $available_model = $model;
+                    break;
+                }
+            }
+
+            if ($available_model) {
+                // Update the plugin setting to use the working model
+                update_option('twss_openrouter_model', $available_model);
+                
+                $message = "✅ OpenRouter API key is valid!\n\n";
+                $message .= "📊 Account Information:\n";
+                $message .= "• Type: " . ($is_free_tier ? 'Free Tier' : 'Paid Account') . "\n";
+                $message .= "• Usage: $" . number_format($usage, 4) . "\n";
+                if ($limit_remaining !== null) {
+                    $message .= "• Remaining: $" . number_format($limit_remaining, 4) . "\n";
+                }
+                $message .= "\n✅ Working Model Found:\n";
+                $message .= "• " . $test_models[$available_model] . "\n";
+                $message .= "• Plugin automatically configured to use this model\n\n";
+                $message .= "🎯 Ready for AI-powered security scanning!";
+                
+                return array(
+                    'success' => true,
+                    'message' => $message,
+                    'available_model' => $available_model,
+                    'account_info' => $account_info
+                );
+            } else {
+                $message = "⚠️ API key is valid but no models are available.\n\n";
+                $message .= "📊 Account Information:\n";
+                $message .= "• Type: " . ($is_free_tier ? 'Free Tier' : 'Paid Account') . "\n";
+                $message .= "• Usage: $" . number_format($usage, 4) . "\n";
+                
+                if ($is_free_tier && $usage == 0) {
+                    $message .= "\n🎯 Free Tier Account Issues:\n";
+                    $message .= "• Free tier may require small credits (even for 'free' models)\n";
+                    $message .= "• Account verification may be needed\n";
+                    $message .= "• Regional restrictions may apply\n\n";
+                    $message .= "💡 Recommended Solutions:\n";
+                    $message .= "1. Add $1-2 in credits to your OpenRouter account\n";
+                    $message .= "2. Verify your account email and phone number\n";
+                    $message .= "3. Try using OpenAI or Google Gemini APIs directly\n\n";
+                    $message .= "🔗 Add credits at: https://openrouter.ai/credits";
+                } else {
+                    $message .= "\n💡 Try refreshing your account or contact OpenRouter support.";
+                }
+                
+                return array(
+                    'success' => false,
+                    'message' => $message,
+                    'test_results' => $test_results,
+                    'account_info' => $account_info
+                );
+            }
+
+        } catch (Exception $e) {
+            return array(
+                'success' => false,
+                'message' => 'Error testing API: ' . $e->getMessage()
+            );
+        }
+    }
+
+    /**
+     * Test a specific OpenRouter model
+     *
+     * @since    1.0.30
+     * @param    string    $api_key    The API key
+     * @param    string    $model      The model to test
+     * @return   array                 Test result
+     */
+    private function test_specific_model($api_key, $model)
+    {
+        try {
             $data = array(
-                'model' => 'openai/gpt-3.5-turbo',
+                'model' => $model,
                 'messages' => array(
                     array(
                         'role' => 'user',
-                        'content' => 'Test connection - please respond with "API test successful"'
+                        'content' => 'Test'
                     )
                 ),
-                'max_tokens' => 10
+                'max_tokens' => 3
             );
+
+            $site_url = get_site_url();
+            $site_name = get_bloginfo('name');
 
             $headers = array(
                 'Content-Type: application/json',
                 'Authorization: Bearer ' . $api_key,
-                'X-Title: Themewire Security Scanner Test'
+                'HTTP-Referer: ' . $site_url,
+                'X-Title: ' . $site_name . ' - Security Scanner Test'
             );
 
             $curl = curl_init();
-
             curl_setopt($curl, CURLOPT_URL, 'https://openrouter.ai/api/v1/chat/completions');
             curl_setopt($curl, CURLOPT_RETURNTRANSFER, true);
-            curl_setopt($curl, CURLOPT_ENCODING, '');
-            curl_setopt($curl, CURLOPT_MAXREDIRS, 10);
-            curl_setopt($curl, CURLOPT_TIMEOUT, 10);
-            curl_setopt($curl, CURLOPT_FOLLOWLOCATION, true);
-            curl_setopt($curl, CURLOPT_HTTP_VERSION, CURL_HTTP_VERSION_1_1);
-            curl_setopt($curl, CURLOPT_CUSTOMREQUEST, 'POST');
+            curl_setopt($curl, CURLOPT_POST, true);
             curl_setopt($curl, CURLOPT_POSTFIELDS, json_encode($data));
             curl_setopt($curl, CURLOPT_HTTPHEADER, $headers);
+            curl_setopt($curl, CURLOPT_TIMEOUT, 10);
 
             $response = curl_exec($curl);
-            $status = curl_getinfo($curl, CURLINFO_HTTP_CODE);
-            $err = curl_error($curl);
-
+            $status_code = curl_getinfo($curl, CURLINFO_HTTP_CODE);
+            $error = curl_error($curl);
             curl_close($curl);
 
-            if ($err) {
+            if ($error) {
                 return array(
                     'success' => false,
-                    'message' => 'cURL Error: ' . $err
+                    'error' => $error
                 );
             }
 
-            if ($status !== 200) {
-                $error_data = json_decode($response, true);
-                $error_msg = isset($error_data['error']['message']) ? $error_data['error']['message'] : 'API returned status code ' . $status;
+            $response_data = json_decode($response, true);
+
+            if ($status_code === 200 && isset($response_data['choices'][0]['message']['content'])) {
+                return array(
+                    'success' => true,
+                    'response' => $response_data['choices'][0]['message']['content']
+                );
+            } else {
+                $error_message = 'Unknown error';
+                if (isset($response_data['error']['message'])) {
+                    $error_message = $response_data['error']['message'];
+                }
+                
                 return array(
                     'success' => false,
-                    'message' => $error_msg
+                    'error' => $error_message,
+                    'status_code' => $status_code
                 );
             }
 
-            return array(
-                'success' => true,
-                'message' => 'OpenRouter API key is valid and working!'
-            );
         } catch (Exception $e) {
             return array(
                 'success' => false,
-                'message' => $e->getMessage()
+                'error' => $e->getMessage()
             );
         }
     }
