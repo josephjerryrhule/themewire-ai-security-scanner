@@ -250,6 +250,209 @@ class Themewire_Security_Scanner
     }
 
     /**
+     * Standalone emergency scanner that works without database connection.
+     * This method can detect malware even when WordPress database is unavailable.
+     *
+     * @since    1.0.33
+     * @param    string    $wordpress_root    Path to WordPress root directory
+     * @return   array     Scan results with detected threats
+     */
+    public function emergency_standalone_scan($wordpress_root = null)
+    {
+        if ($wordpress_root === null) {
+            $wordpress_root = realpath(dirname(dirname(dirname(__DIR__))));
+        }
+
+        $results = array(
+            'scan_time' => date('Y-m-d H:i:s'),
+            'files_scanned' => 0,
+            'threats_found' => 0,
+            'threats' => array(),
+            'summary' => array(
+                'high_risk' => 0,
+                'medium_risk' => 0,
+                'low_risk' => 0
+            )
+        );
+
+        // Scan critical directories
+        $directories_to_scan = array(
+            $wordpress_root . '/wp-content/uploads',
+            $wordpress_root . '/wp-content/themes',
+            $wordpress_root . '/wp-content/plugins',
+            $wordpress_root . '/wp-admin',
+            $wordpress_root . '/wp-includes'
+        );
+
+        foreach ($directories_to_scan as $directory) {
+            if (is_dir($directory)) {
+                $this->emergency_scan_directory($directory, $wordpress_root, $results);
+            }
+        }
+
+        // Generate summary
+        $results['summary']['total_threats'] = $results['threats_found'];
+        $results['status'] = $results['threats_found'] > 0 ? 'THREATS_DETECTED' : 'CLEAN';
+
+        return $results;
+    }
+
+    /**
+     * Emergency scan a directory recursively.
+     *
+     * @since    1.0.33
+     * @param    string    $directory        Directory to scan
+     * @param    string    $wordpress_root   WordPress root path
+     * @param    array     &$results         Results array to update
+     */
+    private function emergency_scan_directory($directory, $wordpress_root, &$results)
+    {
+        $iterator = new RecursiveIteratorIterator(
+            new RecursiveDirectoryIterator($directory, RecursiveDirectoryIterator::SKIP_DOTS),
+            RecursiveIteratorIterator::SELF_FIRST
+        );
+
+        foreach ($iterator as $file) {
+            if ($file->isFile()) {
+                $filepath = $file->getPathname();
+                $extension = strtolower($file->getExtension());
+
+                // Focus on PHP files and other executable types
+                if (in_array($extension, array('php', 'phtml', 'php3', 'php4', 'php5', 'php7', 'php8', 'js', 'html', 'htm'))) {
+                    $results['files_scanned']++;
+
+                    // Check file for malware
+                    $threat_level = $this->emergency_check_file_for_malware($filepath, $wordpress_root);
+
+                    if ($threat_level > 0) {
+                        $relative_path = str_replace($wordpress_root, '', $filepath);
+                        $threat_info = array(
+                            'file' => $relative_path,
+                            'full_path' => $filepath,
+                            'risk_level' => $threat_level >= 75 ? 'HIGH' : ($threat_level >= 40 ? 'MEDIUM' : 'LOW'),
+                            'score' => $threat_level,
+                            'detected_patterns' => $this->last_detected_patterns,
+                            'file_size' => filesize($filepath),
+                            'modified_time' => date('Y-m-d H:i:s', filemtime($filepath))
+                        );
+
+                        $results['threats'][] = $threat_info;
+                        $results['threats_found']++;
+
+                        // Update summary counts
+                        if ($threat_level >= 75) {
+                            $results['summary']['high_risk']++;
+                        } elseif ($threat_level >= 40) {
+                            $results['summary']['medium_risk']++;
+                        } else {
+                            $results['summary']['low_risk']++;
+                        }
+                    }
+                }
+            }
+        }
+    }
+
+    /**
+     * Property to store last detected patterns for reporting.
+     *
+     * @since    1.0.33
+     * @access   private
+     * @var      array    $last_detected_patterns
+     */
+    private $last_detected_patterns = array();
+
+    /**
+     * Emergency malware detection without database dependency.
+     *
+     * @since    1.0.33
+     * @param    string    $filepath    Path to file to check
+     * @param    string    $wp_root     WordPress root path
+     * @return   int       Threat score (0-100)
+     */
+    private function emergency_check_file_for_malware($filepath, $wp_root)
+    {
+        $this->last_detected_patterns = array();
+
+        if (!is_readable($filepath) || filesize($filepath) > 5 * 1024 * 1024) { // Skip files > 5MB
+            return 0;
+        }
+
+        $content = file_get_contents($filepath);
+        if ($content === false) {
+            return 0;
+        }
+
+        $threat_score = 0;
+
+        // Enhanced malware patterns
+        $malware_patterns = array(
+            'eval\s*\(\s*base64_decode' => 75,
+            'eval\s*\(\s*gzinflate' => 70,
+            'eval\s*\(\s*str_rot13' => 65,
+            'system\s*\(\s*\$_' => 80,
+            'exec\s*\(\s*\$_' => 80,
+            'shell_exec\s*\(\s*\$_' => 80,
+            'passthru\s*\(\s*\$_' => 75,
+            'file_get_contents\s*\(\s*["\']https?:\/\/' => 60,
+            'base64_decode\s*\(\s*\$_' => 70,
+            'unserialize\s*\(\s*\$' => 65,
+            'function\s+\w+\(\$\w+,\s*\$\w+,\s*\$\w+\)\s*\{\s*global\s+\$\w+;' => 80,
+            'chr\(\d+\)\s*\.\s*chr\(\d+\)' => 60,
+            '\$\w+\s*=\s*chr\(\d+\)' => 45,
+            'array_map\s*\(\s*["\'][\w]+[\'"]' => 55,
+            'str_rot13\s*\(\s*base64_decode' => 85,
+            'rawurldecode\s*\(' => 35,
+            'implode\s*\(\s*["\'][\'"]' => 40,
+            '\$_SERVER\s*\[\s*["\']DOCUMENT_ROOT[\'"]' => 45,
+            'glob\s*\(\s*\$\w+\s*\.\s*["\']\/\*[\'"]' => 50,
+            'file_put_contents\s*\([^,]*\$_' => 70,
+            'fwrite\s*\(\s*fopen\s*\([^,]*\$_' => 65,
+            '\$\w+\s*\(\s*\$\w+\s*\^\s*\$\w+\)' => 75,
+            'foreach\s*\(\s*\$_POST\s+as\s+\$\w+\s*=>' => 60,
+            '\$_POST\s*\[\s*["\'][^"\']*["\']\s*\]\s*\(' => 75,
+            '\$_GET\s*\[\s*["\'][^"\']*["\']\s*\]\s*\(' => 75
+        );
+
+        // Check each pattern
+        foreach ($malware_patterns as $pattern => $score) {
+            if (preg_match('/' . $pattern . '/i', $content)) {
+                $threat_score += $score;
+                $this->last_detected_patterns[] = $pattern;
+            }
+        }
+
+        // Heuristic checks
+        $chr_count = preg_match_all('/chr\(\d+\)/', $content);
+        if ($chr_count > 20) {
+            $threat_score += 50;
+            $this->last_detected_patterns[] = "Heavy chr() obfuscation ($chr_count instances)";
+        }
+
+        // Check for XOR operations (encryption)
+        if (preg_match('/\^\s*\$/', $content)) {
+            $threat_score += 25;
+            $this->last_detected_patterns[] = "XOR operations detected";
+        }
+
+        // Variable function calls
+        if (preg_match('/\$\w+\s*\(\s*\$/', $content)) {
+            $threat_score += 30;
+            $this->last_detected_patterns[] = "Variable function calls";
+        }
+
+        // Suspicious file locations
+        $relative_path = str_replace($wp_root, '', $filepath);
+        if (strpos($relative_path, '/wp-content/uploads/') !== false && pathinfo($filepath, PATHINFO_EXTENSION) === 'php') {
+            $threat_score += 60;
+            $this->last_detected_patterns[] = "PHP file in uploads directory";
+        }
+
+        // Cap the score at 100
+        return min($threat_score, 100);
+    }
+
+    /**
      * Security-enhanced path validation to prevent path traversal attacks.
      *
      * @since    1.0.32
@@ -4018,7 +4221,7 @@ class Themewire_Security_Scanner
             return $issues;
         }
 
-        // Common malware patterns
+        // Common malware patterns - ENHANCED FOR SOPHISTICATED MALWARE
         $malware_patterns = array(
             'eval\s*\(\s*base64_decode' => 'Base64 obfuscated code execution',
             'eval\s*\(\s*gzinflate' => 'Compressed obfuscated code',
@@ -4038,7 +4241,27 @@ class Themewire_Security_Scanner
             'assert\s*\(\s*\$_' => 'Code execution via assert',
             '\$_POST\s*\[\s*["\'][^"\']*["\']\s*\]\s*\(' => 'POST data execution',
             '\$_GET\s*\[\s*["\'][^"\']*["\']\s*\]\s*\(' => 'GET data execution',
-            'mail\s*\([^)]*\$_' => 'Email spam functionality'
+            'mail\s*\([^)]*\$_' => 'Email spam functionality',
+            // ENHANCED PATTERNS FOR SOPHISTICATED MALWARE
+            'function\s+\w+\(\$\w+,\s*\$\w+,\s*\$\w+\)\s*\{\s*global\s+\$\w+;' => 'Suspicious function with global variable manipulation',
+            'chr\(\d+\)\s*\.\s*chr\(\d+\)' => 'Heavy character obfuscation (backdoor indicator)',
+            '\$\w+\s*=\s*chr\(\d+\)' => 'Character-based string obfuscation',
+            'unserialize\s*\(\s*\$' => 'Unsafe deserialization (RCE risk)',
+            'array_map\s*\(\s*["\'][\w]+[\'"]' => 'Array function obfuscation',
+            'str_rot13\s*\(\s*base64_decode' => 'Double obfuscation (ROT13 + Base64)',
+            'rawurldecode\s*\(' => 'URL decode obfuscation',
+            'implode\s*\(\s*["\'][\'"]' => 'String reconstruction obfuscation',
+            '\$_SERVER\s*\[\s*["\']DOCUMENT_ROOT[\'"]' => 'Server path manipulation',
+            'glob\s*\(\s*\$\w+\s*\.\s*["\']\/\*[\'"]' => 'Directory traversal pattern',
+            'file_put_contents\s*\([^,]*\$_' => 'Dynamic file writing (backdoor creation)',
+            'fwrite\s*\(\s*fopen\s*\([^,]*\$_' => 'Direct file manipulation',
+            'wp_remote_get\s*\(\s*["\']https?:\/\/[^"\']+\.php' => 'Suspicious remote PHP execution',
+            'add_action\s*\(\s*["\']wp_footer[\'"],\s*function' => 'Malicious WordPress hook injection',
+            'base64_decode\s*\(\s*\$_' => 'User-controlled base64 decode',
+            '<\?php\s+\$\w+\s*=\s*[\'"]\w+[\'"];\s*eval' => 'PHP eval backdoor pattern',
+            '\$\w+\s*=\s*[\'"][a-zA-Z0-9+\/=]{50,}[\'"];\s*eval' => 'Encoded eval backdoor',
+            '\$\w+\s*\(\s*\$\w+\s*\^\s*\$\w+\)' => 'XOR encryption/decryption (sophisticated malware)',
+            'foreach\s*\(\s*\$_POST\s+as\s+\$\w+\s*=>' => 'POST data processing without validation'
         );
 
         // File corruption patterns
