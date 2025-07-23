@@ -968,6 +968,7 @@ class Themewire_Security_AI_Analyzer
         curl_close($curl);
 
         if ($err) {
+            $this->rate_limited_error_log("OpenAI API cURL Error: {$err}");
             throw new Exception('API request error: ' . $err);
         }
 
@@ -976,6 +977,31 @@ class Themewire_Security_AI_Analyzer
         if (isset($response_data['choices'][0]['message']['content'])) {
             return $response_data['choices'][0]['message']['content'];
         } else {
+            // Handle specific API errors
+            if (isset($response_data['error'])) {
+                $error = $response_data['error'];
+                $error_code = isset($error['code']) ? $error['code'] : 0;
+                $error_message = isset($error['message']) ? $error['message'] : 'Unknown API error';
+
+                // Handle quota/credit exhausted errors with aggressive rate limiting
+                if ($error_code === 429 || strpos($error_message, 'quota') !== false || strpos($error_message, 'credit') !== false) {
+                    // Only log this error once every 30 minutes (1800 seconds) to prevent spam
+                    $this->rate_limited_error_log('OpenAI API Quota/Credits Exhausted - Falling back to pattern-based analysis', 1800);
+                    throw new Exception('AI analysis temporarily unavailable due to quota limits. Using pattern-based analysis instead.');
+                }
+
+                // Handle rate limiting with reduced logging
+                if ($error_code === 429) {
+                    $this->rate_limited_error_log('OpenAI API Rate Limited - Using pattern analysis', 900);
+                    throw new Exception('AI service rate limited. Falling back to pattern analysis.');
+                }
+
+                // Handle other API errors with rate limiting
+                $this->rate_limited_error_log("OpenAI API Error [{$error_code}]: {$error_message}");
+                throw new Exception("AI analysis service error. Using pattern-based detection instead.");
+            }
+
+            $this->rate_limited_error_log('OpenAI API: Invalid response structure received');
             throw new Exception('Invalid API response');
         }
     }
@@ -1026,6 +1052,7 @@ class Themewire_Security_AI_Analyzer
         curl_close($curl);
 
         if ($err) {
+            $this->rate_limited_error_log("Gemini API cURL Error: {$err}");
             throw new Exception('API request error: ' . $err);
         }
 
@@ -1041,30 +1068,94 @@ class Themewire_Security_AI_Analyzer
                 $error_message = isset($error['message']) ? $error['message'] : 'Unknown API error';
                 $error_status = isset($error['status']) ? $error['status'] : 'UNKNOWN';
 
-                // Handle quota exhausted error (429)
+                // Handle quota exhausted error (429) with aggressive rate limiting
                 if ($error_code === 429 || $error_status === 'RESOURCE_EXHAUSTED') {
-                    // Log sanitized error for admin
-                    error_log('Gemini API Quota Exhausted - Falling back to pattern-based analysis');
-
-                    // Return user-friendly error message
+                    // Only log this error once every 30 minutes (1800 seconds) to prevent spam
+                    $this->rate_limited_error_log('Gemini API Quota Exhausted - Falling back to pattern-based analysis', 1800);
                     throw new Exception('AI analysis temporarily unavailable due to quota limits. Using pattern-based analysis instead.');
                 }
 
                 // Handle rate limiting
                 if ($error_code === 429) {
-                    error_log('Gemini API Rate Limited - Retrying with pattern analysis');
+                    $this->rate_limited_error_log('Gemini API Rate Limited - Using pattern analysis', 900);
                     throw new Exception('AI service rate limited. Falling back to pattern analysis.');
                 }
 
-                // Handle other API errors with sanitized messages
-                error_log("Gemini API Error [{$error_code}]: {$error_message}");
+                // Handle other API errors with sanitized messages and rate limiting
+                $this->rate_limited_error_log("Gemini API Error [{$error_code}]: {$error_message}");
                 throw new Exception("AI analysis service error. Using pattern-based detection instead.");
             }
 
-            // Log raw response for debugging (but sanitize in production)
-            error_log('Gemini API: Invalid response structure received');
+            // Log raw response for debugging (but sanitize in production) with rate limiting
+            $this->rate_limited_error_log('Gemini API: Invalid response structure received');
             throw new Exception('AI service returned invalid response. Using fallback analysis.');
         }
+    }
+
+    /**
+     * Rate limiting for error logging
+     *
+     * @since    1.0.28
+     * @access   private
+     * @var      array    $error_log_cache
+     */
+    private static $error_log_cache = array();
+
+    /**
+     * Rate limited error logging
+     *
+     * @since    1.0.28
+     * @param    string    $message    Error message
+     * @param    int       $timeout    Rate limit timeout in seconds (default: 300 = 5 minutes)
+     * @return   boolean   True if message was logged, false if rate limited
+     */
+    private function rate_limited_error_log($message, $timeout = 300)
+    {
+        $hash = md5($message);
+        $now = time();
+        
+        // Check if we've logged this error recently
+        if (isset(self::$error_log_cache[$hash]) && 
+            (self::$error_log_cache[$hash] + $timeout) > $now) {
+            return false; // Rate limited
+        }
+        
+        // Log the error and update cache
+        error_log($message);
+        self::$error_log_cache[$hash] = $now;
+        
+        // Clean up old cache entries periodically
+        if (count(self::$error_log_cache) > 50) {
+            $this->cleanup_error_log_cache($timeout);
+        }
+        
+        return true;
+    }
+
+    /**
+     * Clean up old error log cache entries
+     *
+     * @since    1.0.28
+     * @param    int    $timeout    Timeout to use for cleanup
+     */
+    private function cleanup_error_log_cache($timeout = 300)
+    {
+        $now = time();
+        foreach (self::$error_log_cache as $key => $time) {
+            if (($time + $timeout) <= $now) {
+                unset(self::$error_log_cache[$key]);
+            }
+        }
+    }
+
+    /**
+     * Clear all error log cache (useful for cleanup)
+     *
+     * @since    1.0.28
+     */
+    public static function clear_error_log_cache()
+    {
+        self::$error_log_cache = array();
     }
 
     /**
@@ -1119,6 +1210,7 @@ class Themewire_Security_AI_Analyzer
         curl_close($curl);
 
         if ($err) {
+            $this->rate_limited_error_log("OpenRouter API cURL Error: {$err}");
             throw new Exception('API request error: ' . $err);
         }
 
@@ -1136,7 +1228,7 @@ class Themewire_Security_AI_Analyzer
 
                 // Handle model not found errors (404)
                 if ($error_code === 404 && strpos($error_message, 'endpoints') !== false) {
-                    error_log("OpenRouter Model Not Available: {$error_message} - Trying fallback model");
+                    $this->rate_limited_error_log("OpenRouter Model Not Available: {$error_message} - Trying fallback model");
 
                     // Try with a reliable fallback model
                     $fallback_models = ['openai/gpt-3.5-turbo', 'microsoft/wizardlm-2-8x22b:free', 'google/gemma-2-9b-it:free'];
@@ -1146,7 +1238,7 @@ class Themewire_Security_AI_Analyzer
                         if ($fallback_model !== $current_model) {
                             // Update model setting and retry
                             update_option('twss_openrouter_model', $fallback_model);
-                            error_log("Switching to fallback model: {$fallback_model}");
+                            $this->rate_limited_error_log("Switching to fallback model: {$fallback_model}");
                             throw new Exception("Model not available. Switched to {$fallback_model}. Please retry your request.");
                         }
                     }
@@ -1154,25 +1246,32 @@ class Themewire_Security_AI_Analyzer
                     throw new Exception('Current model unavailable and fallback models failed. Please check OpenRouter model availability.');
                 }
 
-                // Handle quota/credit exhausted errors
+                // Handle quota/credit exhausted errors with aggressive rate limiting
                 if ($error_code === 429 || strpos($error_message, 'quota') !== false || strpos($error_message, 'credit') !== false) {
-                    error_log('OpenRouter API Quota/Credits Exhausted - Falling back to pattern-based analysis');
+                    // Only log this error once every 30 minutes (1800 seconds) to prevent spam
+                    $this->rate_limited_error_log('OpenRouter API Quota/Credits Exhausted - Falling back to pattern-based analysis', 1800);
                     throw new Exception('AI analysis temporarily unavailable due to quota limits. Using pattern-based analysis instead.');
                 }
 
-                // Handle rate limiting
+                // Handle rate limiting with reduced logging
                 if ($error_code === 429) {
-                    error_log('OpenRouter API Rate Limited - Retrying with pattern analysis');
+                    $this->rate_limited_error_log('OpenRouter API Rate Limited - Using pattern analysis', 900);
                     throw new Exception('AI service rate limited. Falling back to pattern analysis.');
                 }
 
+                // Handle Invalid JSON errors (often temporary)
+                if ($error_code === 400 && strpos($error_message, 'Invalid JSON') !== false) {
+                    $this->rate_limited_error_log("OpenRouter API Error [{$error_code}]: {$error_message}", 600);
+                    throw new Exception("AI analysis service error. Using pattern-based detection instead.");
+                }
+
                 // Handle other API errors with sanitized messages
-                error_log("OpenRouter API Error [{$error_code}]: {$error_message}");
+                $this->rate_limited_error_log("OpenRouter API Error [{$error_code}]: {$error_message}");
                 throw new Exception("AI analysis service error. Using pattern-based detection instead.");
             }
 
-            // Log for debugging
-            error_log('OpenRouter API: Invalid response structure received');
+            // Log for debugging with rate limiting
+            $this->rate_limited_error_log('OpenRouter API: Invalid response structure received');
             throw new Exception('AI service returned invalid response. Using fallback analysis.');
         }
     }
