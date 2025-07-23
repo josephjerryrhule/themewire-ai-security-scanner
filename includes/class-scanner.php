@@ -762,21 +762,25 @@ class Themewire_Security_Scanner
         $critical_files = $this->find_critical_files();
         $inventory['stage_totals']['critical_files'] = count($critical_files);
         $inventory['total_files'] += count($critical_files);
+        $this->logger->info("File inventory: Found " . count($critical_files) . " critical files");
 
         // 2. ALL Core files (comprehensive scan, not just samples)
         $core_files = $this->find_all_core_files();
         $inventory['stage_totals']['core_files'] = count($core_files);
         $inventory['total_files'] += count($core_files);
+        $this->logger->info("File inventory: Found " . count($core_files) . " core files");
 
         // 3. ALL plugins (active AND inactive for security)
         $plugin_files = $this->find_all_plugin_files();
         $inventory['stage_totals']['plugins'] = count($plugin_files);
         $inventory['total_files'] += count($plugin_files);
+        $this->logger->info("File inventory: Found " . count($plugin_files) . " plugin files");
 
         // 4. ALL themes (active AND inactive for security)
         $theme_files = $this->find_all_theme_files();
         $inventory['stage_totals']['themes'] = count($theme_files);
         $inventory['total_files'] += count($theme_files);
+        $this->logger->info("File inventory: Found " . count($theme_files) . " theme files");
 
         // 5. All uploads directory files (comprehensive security scan)
         $upload_files = $this->find_all_upload_files();
@@ -1618,11 +1622,10 @@ class Themewire_Security_Scanner
 
             // Update scan status
             $this->database->update_scan_status($scan_id, 'completed');
+            $this->logger->info('COMPLETION DEBUG: Regular scan completed via start_scan()', array('scan_id' => $scan_id));
             if ($this->logger) {
                 $this->logger->info('Scan completed successfully', array('scan_id' => $scan_id));
-            }
-
-            // Get scan summary
+            }            // Get scan summary
             $summary = $this->database->get_scan_summary($scan_id);
 
             $this->set_scan_in_progress(false);
@@ -3231,10 +3234,19 @@ class Themewire_Security_Scanner
             }
         }        // Update scan status to completed
         $this->database->update_scan_status($scan_id, 'completed');
+        $this->logger->info('COMPLETION DEBUG: Chunked scan completed', array('scan_id' => $scan_id, 'files_scanned' => $files_scanned));
 
         // Update the total files count in database with estimated scanned files
         if ($files_scanned > 0) {
-            $this->database->update_scan_total_files($scan_id, $files_scanned);
+            $db_update_result = $this->database->update_scan_total_files($scan_id, $files_scanned);
+            if ($db_update_result === false) {
+                error_log("TWSS ERROR: Failed to update scan total files (chunked scan) for scan_id: $scan_id, files: $files_scanned");
+                error_log("TWSS ERROR: This suggests a database connection issue in Docker/DevKinsta environment");
+            } else {
+                error_log("TWSS SUCCESS: Database update succeeded (chunked scan) for scan_id: $scan_id, files: $files_scanned");
+            }
+        } else {
+            $this->logger->info('COMPLETION DEBUG: Chunked scan files_scanned is 0, not updating database', array('scan_id' => $scan_id));
         }
 
         // Clean up scan state - ensure all transients are cleared
@@ -4178,8 +4190,11 @@ class Themewire_Security_Scanner
         $count = 0;
 
         if (!is_dir($directory)) {
+            $this->logger->info("File discovery: Directory does not exist: $directory");
             return array();
         }
+
+        $this->logger->info("File discovery: Scanning directory: $directory for extensions: " . implode(', ', $extensions));
 
         $iterator = new RecursiveIteratorIterator(
             new RecursiveDirectoryIterator($directory, RecursiveDirectoryIterator::SKIP_DOTS),
@@ -4200,6 +4215,7 @@ class Themewire_Security_Scanner
             }
         }
 
+        $this->logger->info("File discovery: Found $count files in $directory (limit: $limit)");
         return $files;
     }
 
@@ -4577,26 +4593,54 @@ class Themewire_Security_Scanner
         // Mark scan as completed
         $this->database->update_scan_status($scan_id, 'completed');
 
-        // Update the total files count in database with actual scanned files
-        // Add fallback in case files_scanned is somehow 0
-        // Get the ACTUAL number of files scanned from the database
-        $comprehensive_stats = $this->database->get_comprehensive_scan_stats($scan_id);
-        $final_files_count = isset($comprehensive_stats['total_files']) ? $comprehensive_stats['total_files'] : 0;
+        // FIXED: Use the inventory total as the primary source of files count
+        // The inventory calculation is accurate and should be trusted
+        $final_files_count = $scan_state['total_files'] ?? 0;
 
-        // Fallback to scan state if database count is zero
+        // If scan_state total_files is 0 or missing, recalculate the inventory
         if ($final_files_count === 0) {
-            $final_files_count = $scan_state['files_scanned'];
-            if ($final_files_count === 0 && isset($scan_state['total_files']) && $scan_state['total_files'] > 0) {
-                // Use the original total_files as fallback - at least we tried to scan them
-                $final_files_count = $scan_state['total_files'];
+            // Recalculate the file inventory directly
+            $fresh_inventory = $this->calculate_scan_inventory();
+            $inventory_total = $fresh_inventory['total_files'] ?? 0;
+
+            if ($inventory_total > 0) {
+                $final_files_count = $inventory_total;
+            } else {
+                // Get the ACTUAL number of files scanned from the database as fallback
+                $comprehensive_stats = $this->database->get_comprehensive_scan_stats($scan_id);
+                $final_files_count = isset($comprehensive_stats['total_files']) ? $comprehensive_stats['total_files'] : 0;
+
+                // Final fallback to scan state files_scanned
+                if ($final_files_count === 0) {
+                    $final_files_count = $scan_state['files_scanned'];
+                }
             }
         }
 
         // Add debug logging
-        error_log("TWSS Debug: Finalizing scan $scan_id - Database shows $final_files_count files scanned, scan_state shows " .
-            $scan_state['files_scanned'] . " files_scanned, " . ($scan_state['total_files'] ?? 'unknown') . " total_files");
+        $this->logger->info("Finalizing scan $scan_id - Using inventory total: $final_files_count files, scan_state shows " .
+            $scan_state['files_scanned'] . " files_scanned");
 
-        $this->database->update_scan_total_files($scan_id, $final_files_count);
+        // Add more debug info about what we're using
+        $this->logger->info("Scan completion debug", array(
+            'scan_id' => $scan_id,
+            'final_files_count' => $final_files_count,
+            'scan_state_files_scanned' => $scan_state['files_scanned'],
+            'scan_state_total_files' => $scan_state['total_files'] ?? 'not_set',
+            'source' => 'inventory_total'
+        ));
+
+        // DOCKER/DEVKINSTA FIX: Check if database update succeeded
+        $db_update_result = $this->database->update_scan_total_files($scan_id, $final_files_count);
+        if ($db_update_result === false) {
+            error_log("TWSS ERROR: Failed to update scan total files for scan_id: $scan_id, files: $final_files_count");
+            error_log("TWSS ERROR: This suggests a database connection issue in Docker/DevKinsta environment");
+
+            // Try to update scan status to indicate database issue
+            $this->database->update_scan_status($scan_id, 'failed', 'Database update failed - connection issue');
+        } else {
+            error_log("TWSS SUCCESS: Database update succeeded for scan_id: $scan_id, files: $final_files_count");
+        }
 
         $this->set_scan_in_progress(false);
 
