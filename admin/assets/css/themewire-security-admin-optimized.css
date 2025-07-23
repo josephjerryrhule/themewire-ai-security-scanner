@@ -1,0 +1,642 @@
+/**
+ * Security-Focused Admin Styles for Themewire AI Security Scanner
+ *
+ * @link       https://themewire.com
+ * @since      1.0.32
+ * @security   Optimized for security-first UI/UX with flat minimal design
+ * @package    Themewire_Security
+ */
+
+/* ===========================
+   SECURITY-FIRST BASE STYLES 
+   =========================== */
+.themewire-security-wrap {
+  max-width: 100%;
+  background-color: #ffffff;
+  color: #2c3e50;
+  font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto,
+    "Helvetica Neue", Arial, sans-serif;
+  line-height: 1.5;
+  position: relative;
+  overflow: hidden; /* Security: Prevent content overflow */
+}
+
+.themewire-security-wrap * {
+  box-sizing: border-box;
+}
+
+/* Security Header with Threat Level Indicator */
+.themewire-security-wrap .header-actions {
+  margin-bottom: 20px;
+  padding: 20px;
+  border-bottom: 2px solid #e74c3c;
+  background: linear-gradient(90deg, #ffffff 0%, #fdf2f2 100%);
+  position: relative;
+}
+
+.themewire-security-wrap .header-actions::before {
+  content: "🛡️";
+  position: absolute;
+  left: 20px;
+  top: 50%;
+  transform: translateY(-50%);
+  font-size: 24px;
+  opacity: 0.7;
+}
+
+.themewire-security-wrap .header-actions h1 {
+  margin: 0 0 0 50px;
+  color: #2c3e50;
+  font-size: 24px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 1px;
+}
+
+/* ===========================
+   CARDS - SECURITY FOCUSED
+   =========================== */
+.themewire-security-wrap .card {
+  background: #ffffff;
+  border: 1px solid #bdc3c7;
+  border-left: 4px solid #e74c3c;
+  padding: 20px;
+  margin-bottom: 20px;
+  position: relative;
+  transition: border-left-color 0.3s ease;
+}
+
+.themewire-security-wrap .card.secure {
+  border-left-color: #27ae60;
+}
+
+.themewire-security-wrap .card.warning {
+  border-left-color: #f39c12;
+}
+
+.themewire-security-wrap .card.critical {
+  border-left-color: #e74c3c;
+  background: linear-gradient(90deg, #ffffff 0%, #fdf2f2 100%);
+}
+
+.themewire-security-wrap .card-title {
+  margin: 0 0 20px 0;
+  padding-bottom: 15px;
+  border-bottom: 1px solid #ecf0f1;
+  color: #2c3e50;
+  font-size: 18px;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+}
+
+/* ===========================
+   SECURITY STATS GRID
+   =========================== */
+.themewire-security-wrap .stat-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+  gap: 1px;
+  margin-bottom: 20px;
+  background: #bdc3c7;
+}
+
+.themewire-security-wrap .stat-card {
+  padding: 20px;
+  background-color: #ffffff;
+  border-left: 4px solid #2c3e50;
+  position: relative;
+  transition: transform 0.2s ease;
+}
+
+.themewire-security-wrap .stat-card:hover {
+  transform: translateY(-1px);
+}
+
+.themewire-security-wrap .stat-card.threat-high,
+.themewire-security-wrap .stat-card.high-severity {
+  border-left-color: #e74c3c;
+  background: linear-gradient(135deg, #ffffff 0%, #fdf2f2 100%);
+}
+
+.themewire-security-wrap .stat-card.threat-medium,
+.themewire-security-wrap .stat-card.medium-severity {
+  border-left-color: #f39c12;
+  background: linear-gradient(135deg, #ffffff 0%, #fef9e7 100%);
+}
+
+.themewire-security-wrap .stat-card.threat-low,
+.themewire-security-wrap .stat-card.low-severity {
+  border-left-color: #3498db;
+  background: linear-gradient(135deg, #ffffff 0%, #f0f8ff 100%);
+}
+
+.themewire-security-wrap .stat-card.secure {
+  border-left-color: #27ae60;
+  background: linear-gradient(135deg, #ffffff 0%, #f0fff4 100%);
+}
+
+.themewire-security-wrap .stat-label {
+  font-size: 11px;
+  color: #7f8c8d;
+  margin-bottom: 8px;
+  text-transform: uppercase;
+  letter-spacing: 1px;
+  font-weight: 600;
+}
+
+.themewire-security-wrap .stat-number {
+  font-size: 32px;
+  font-weight: 800;
+  color: #2c3e50;
+  line-height: 1;
+  font-family: "SF Mono", "Courier New", monospace; /* Security: Use monospace for numbers */
+}
+
+/* Severity Colors */
+.themewire-security-wrap .severity-high {
+  color: #e74c3c;
+  font-weight: 700;
+}
+
+.themewire-security-wrap .severity-medium {
+  color: #f39c12;
+  font-weight: 700;
+}
+
+.themewire-security-wrap .severity-low {
+  color: #3498db;
+  font-weight: 700;
+}
+
+/* ===========================
+   SECURITY-FOCUSED BUTTONS (FLAT DESIGN)
+   =========================== */
+.themewire-security-wrap .action-buttons {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 1px;
+  margin-bottom: 20px;
+  background: #bdc3c7;
+}
+
+/* Primary Security Buttons - Completely Flat */
+.themewire-security-wrap .btn-primary,
+.themewire-security-wrap .button-primary,
+.themewire-security-wrap #start-scan-button,
+.themewire-security-wrap #stop-scan-button,
+.themewire-security-wrap #resume-scan-button {
+  background: #2c3e50;
+  color: #ffffff;
+  border: none;
+  padding: 12px 25px; /* Exact padding as requested */
+  font-size: 13px;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.8px;
+  cursor: pointer;
+  transition: all 0.2s ease;
+  text-decoration: none;
+  display: inline-block;
+  position: relative;
+  /* Completely flat - NO border-radius */
+  border-radius: 0;
+}
+
+.themewire-security-wrap .btn-primary:hover,
+.themewire-security-wrap .button-primary:hover,
+.themewire-security-wrap #start-scan-button:hover,
+.themewire-security-wrap #stop-scan-button:hover,
+.themewire-security-wrap #resume-scan-button:hover {
+  background: #34495e;
+  transform: translateY(-1px);
+}
+
+.themewire-security-wrap .btn-primary:active,
+.themewire-security-wrap .button-primary:active {
+  transform: translateY(0);
+}
+
+.themewire-security-wrap .btn-primary:disabled,
+.themewire-security-wrap .button-primary:disabled {
+  background: #95a5a6;
+  color: #ecf0f1;
+  cursor: not-allowed;
+  transform: none;
+  opacity: 0.6;
+}
+
+/* Security Action Buttons */
+.themewire-security-wrap .btn-scan {
+  background: #3498db;
+  color: #ffffff;
+  padding: 12px 25px;
+  border: none;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.8px;
+  cursor: pointer;
+  transition: all 0.2s ease;
+  border-radius: 0;
+}
+
+.themewire-security-wrap .btn-scan:hover {
+  background: #2980b9;
+  transform: translateY(-1px);
+}
+
+.themewire-security-wrap .btn-quarantine {
+  background: #f39c12;
+  color: #ffffff;
+  padding: 12px 25px;
+  border: none;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.8px;
+  cursor: pointer;
+  transition: all 0.2s ease;
+  border-radius: 0;
+}
+
+.themewire-security-wrap .btn-quarantine:hover {
+  background: #d68910;
+  transform: translateY(-1px);
+}
+
+.themewire-security-wrap .btn-danger,
+.themewire-security-wrap .button-danger {
+  background: #e74c3c;
+  color: #ffffff;
+  border: none;
+  padding: 12px 25px; /* Exact padding as requested */
+  font-size: 13px;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.8px;
+  cursor: pointer;
+  transition: all 0.2s ease;
+  text-decoration: none;
+  display: inline-block;
+  border-radius: 0; /* Completely flat */
+}
+
+.themewire-security-wrap .btn-danger:hover,
+.themewire-security-wrap .button-danger:hover {
+  background: #c0392b;
+  transform: translateY(-1px);
+}
+
+/* Secondary Buttons - Flat */
+.themewire-security-wrap .btn-secondary,
+.themewire-security-wrap .button-secondary {
+  background: #ffffff;
+  color: #2c3e50;
+  border: 1px solid #2c3e50;
+  padding: 12px 25px; /* Exact padding as requested */
+  font-size: 13px;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.8px;
+  cursor: pointer;
+  transition: all 0.2s ease;
+  text-decoration: none;
+  display: inline-block;
+  border-radius: 0; /* Completely flat */
+}
+
+.themewire-security-wrap .btn-secondary:hover,
+.themewire-security-wrap .button-secondary:hover {
+  background: #2c3e50;
+  color: #ffffff;
+  transform: translateY(-1px);
+}
+
+/* Small Buttons */
+.themewire-security-wrap .btn-small {
+  padding: 8px 16px;
+  font-size: 11px;
+  border-radius: 0;
+}
+
+/* ===========================
+   FORM ELEMENTS - FLAT DESIGN
+   =========================== */
+.themewire-security-wrap input[type="text"],
+.themewire-security-wrap input[type="email"],
+.themewire-security-wrap input[type="password"],
+.themewire-security-wrap textarea,
+.themewire-security-wrap select {
+  border: 1px solid #bdc3c7;
+  padding: 12px;
+  font-size: 14px;
+  background: #ffffff;
+  color: #2c3e50;
+  width: 100%;
+  border-radius: 0; /* Completely flat */
+  outline: none;
+  transition: border-color 0.2s ease;
+  font-family: inherit;
+}
+
+.themewire-security-wrap input[type="text"]:focus,
+.themewire-security-wrap input[type="email"]:focus,
+.themewire-security-wrap input[type="password"]:focus,
+.themewire-security-wrap textarea:focus,
+.themewire-security-wrap select:focus {
+  border-color: #2c3e50;
+  box-shadow: inset 0 0 0 1px #2c3e50;
+}
+
+/* API Model Selection */
+.themewire-security-wrap #openrouter-model-info,
+.themewire-security-wrap #groq-model-info {
+  margin-top: 10px;
+  padding: 20px; /* Using 20px wrap padding as requested */
+  background: #ecf0f1;
+  border-left: 4px solid #3498db;
+  border-radius: 0; /* Completely flat */
+}
+
+.themewire-security-wrap #openrouter-model-info h4,
+.themewire-security-wrap #groq-model-info h4 {
+  margin: 0 0 8px 0;
+  color: #2c3e50;
+  font-size: 16px;
+  font-weight: 600;
+}
+
+.themewire-security-wrap #openrouter-model-info p,
+.themewire-security-wrap #groq-model-info p {
+  margin: 5px 0;
+  color: #7f8c8d;
+  font-size: 14px;
+}
+
+/* ===========================
+   PROGRESS BARS - SECURITY FOCUSED
+   =========================== */
+.themewire-security-wrap .progress-bar {
+  width: 100%;
+  height: 6px;
+  background: #ecf0f1;
+  margin: 15px 0;
+  overflow: hidden;
+  border-radius: 0; /* Completely flat */
+  position: relative;
+}
+
+.themewire-security-wrap .progress-bar-fill {
+  height: 100%;
+  background: #2c3e50;
+  transition: width 0.3s ease;
+  position: relative;
+}
+
+.themewire-security-wrap .progress-bar-fill::after {
+  content: "";
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  background: linear-gradient(
+    90deg,
+    transparent,
+    rgba(255, 255, 255, 0.3),
+    transparent
+  );
+  animation: progressShine 2s infinite;
+}
+
+@keyframes progressShine {
+  0% {
+    transform: translateX(-100%);
+  }
+  100% {
+    transform: translateX(100%);
+  }
+}
+
+.themewire-security-wrap .progress-bar-fill.success {
+  background: #27ae60;
+}
+
+.themewire-security-wrap .progress-bar-fill.warning {
+  background: #f39c12;
+}
+
+.themewire-security-wrap .progress-bar-fill.error {
+  background: #e74c3c;
+}
+
+/* Progress Text */
+.themewire-security-wrap .scan-progress-text {
+  font-size: 14px;
+  font-weight: 600;
+  color: #2c3e50;
+  text-align: center;
+  margin-top: 10px;
+  font-family: "SF Mono", "Courier New", monospace;
+}
+
+/* ===========================
+   TABLES - FLAT SECURITY DESIGN
+   =========================== */
+.themewire-security-wrap table {
+  width: 100%;
+  border-collapse: collapse;
+  background: #ffffff;
+  border: 1px solid #bdc3c7;
+}
+
+.themewire-security-wrap th,
+.themewire-security-wrap td {
+  padding: 15px 20px;
+  text-align: left;
+  border-bottom: 1px solid #ecf0f1;
+}
+
+.themewire-security-wrap th {
+  background: #34495e;
+  color: #ffffff;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+  font-size: 12px;
+}
+
+.themewire-security-wrap tbody tr:hover {
+  background: #f8f9fa;
+}
+
+/* ===========================
+   SCAN STAGE INDICATORS
+   =========================== */
+.themewire-security-wrap .scan-stage-list {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+  gap: 1px;
+  background: #bdc3c7;
+  margin: 20px 0;
+}
+
+.themewire-security-wrap .scan-stage-item {
+  background: #ffffff;
+  padding: 15px 20px;
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  border-left: 4px solid #95a5a6;
+  transition: all 0.3s ease;
+}
+
+.themewire-security-wrap .scan-stage-item.pending {
+  border-left-color: #95a5a6;
+}
+
+.themewire-security-wrap .scan-stage-item.in-progress {
+  border-left-color: #3498db;
+  background: linear-gradient(135deg, #ffffff 0%, #f0f8ff 100%);
+}
+
+.themewire-security-wrap .scan-stage-item.completed {
+  border-left-color: #27ae60;
+  background: linear-gradient(135deg, #ffffff 0%, #f0fff4 100%);
+}
+
+.themewire-security-wrap .stage-name {
+  font-weight: 600;
+  color: #2c3e50;
+  font-size: 13px;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+}
+
+.themewire-security-wrap .stage-status {
+  font-size: 11px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 1px;
+  padding: 4px 8px;
+  background: #ecf0f1;
+  color: #7f8c8d;
+}
+
+.themewire-security-wrap .stage-status.in-progress {
+  background: #3498db;
+  color: #ffffff;
+}
+
+.themewire-security-wrap .stage-status.completed {
+  background: #27ae60;
+  color: #ffffff;
+}
+
+/* ===========================
+   NOTICES - SECURITY ALERTS
+   =========================== */
+.themewire-security-wrap .notice {
+  padding: 20px;
+  margin: 20px 0;
+  border-left: 4px solid #2c3e50;
+  background: #ffffff;
+  border-radius: 0; /* Completely flat */
+}
+
+.themewire-security-wrap .notice.notice-success {
+  border-left-color: #27ae60;
+  background: linear-gradient(90deg, #ffffff 0%, #f0fff4 100%);
+}
+
+.themewire-security-wrap .notice.notice-warning {
+  border-left-color: #f39c12;
+  background: linear-gradient(90deg, #ffffff 0%, #fef9e7 100%);
+}
+
+.themewire-security-wrap .notice.notice-error {
+  border-left-color: #e74c3c;
+  background: linear-gradient(90deg, #ffffff 0%, #fdf2f2 100%);
+}
+
+.themewire-security-wrap .notice.notice-info {
+  border-left-color: #3498db;
+  background: linear-gradient(90deg, #ffffff 0%, #f0f8ff 100%);
+}
+
+/* ===========================
+   LOADING STATES
+   =========================== */
+.themewire-security-wrap .loading-spinner {
+  display: inline-block;
+  width: 16px;
+  height: 16px;
+  border: 2px solid #ecf0f1;
+  border-top: 2px solid #2c3e50;
+  border-radius: 50%;
+  animation: spin 1s linear infinite;
+  margin-left: 10px;
+}
+
+@keyframes spin {
+  0% {
+    transform: rotate(0deg);
+  }
+  100% {
+    transform: rotate(360deg);
+  }
+}
+
+/* ===========================
+   RESPONSIVE DESIGN
+   =========================== */
+@media (max-width: 768px) {
+  .themewire-security-wrap .header-actions {
+    padding: 20px;
+  }
+
+  .themewire-security-wrap .stat-grid {
+    grid-template-columns: 1fr;
+  }
+
+  .themewire-security-wrap .action-buttons {
+    flex-direction: column;
+  }
+
+  .themewire-security-wrap .scan-stage-list {
+    grid-template-columns: 1fr;
+  }
+}
+
+/* ===========================
+   ACCESSIBILITY IMPROVEMENTS
+   =========================== */
+.themewire-security-wrap *:focus {
+  outline: 2px solid #3498db;
+  outline-offset: 2px;
+}
+
+.themewire-security-wrap button:focus,
+.themewire-security-wrap .btn-primary:focus,
+.themewire-security-wrap .btn-secondary:focus,
+.themewire-security-wrap .btn-danger:focus {
+  outline: 2px solid #ffffff;
+  outline-offset: -2px;
+}
+
+/* High contrast mode support */
+@media (prefers-contrast: high) {
+  .themewire-security-wrap {
+    background: #ffffff;
+    color: #000000;
+  }
+
+  .themewire-security-wrap .card {
+    border: 2px solid #000000;
+  }
+
+  .themewire-security-wrap .btn-primary {
+    background: #000000;
+    color: #ffffff;
+    border: 2px solid #000000;
+  }
+}

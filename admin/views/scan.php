@@ -50,6 +50,33 @@ $scan = $wpdb->get_row("SELECT * FROM {$wpdb->prefix}twss_scans ORDER BY scan_da
                 $current_scan_id = null;
             }
         }
+
+        // Additional cleanup: If scan is marked as in progress but there's no current scan ID or it's completed
+        $scan_in_progress_transient = get_transient('twss_scan_in_progress');
+        if ($scan_in_progress_transient === 'yes' && (!$current_scan_id || !$has_incomplete_scan)) {
+            // Clear stale scan progress flag
+            delete_transient('twss_scan_in_progress');
+            delete_transient('twss_scan_last_activity');
+            delete_transient('twss_optimized_scan_state');
+            delete_transient('twss_chunked_scan_state');
+            $scan_in_progress = false; // Update the variable for this page load
+        }
+
+        // Additional validation: Check if scan_in_progress is true but scan ID has a completed status
+        if ($scan_in_progress && $current_scan_id) {
+            $scan_status = $wpdb->get_var($wpdb->prepare("SELECT status FROM {$wpdb->prefix}twss_scans WHERE id = %d", $current_scan_id));
+            if ($scan_status && in_array($scan_status, array('completed', 'failed', 'stopped'))) {
+                // Scan is actually completed but transient wasn't cleared - fix this
+                delete_transient('twss_scan_in_progress');
+                delete_transient('twss_scan_last_activity');
+                delete_transient('twss_optimized_scan_state');
+                delete_transient('twss_chunked_scan_state');
+                delete_option('twss_current_scan_id');
+                $scan_in_progress = false;
+                $has_incomplete_scan = false;
+                $current_scan_id = null;
+            }
+        }
         ?>
         <?php if ($has_incomplete_scan): ?>
             <div class="notice notice-warning">

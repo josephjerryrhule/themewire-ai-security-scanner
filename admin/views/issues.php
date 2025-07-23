@@ -296,7 +296,7 @@ function is_wordpress_core_file($file_path)
                                             <div class="ai-verdict" style="max-width: 300px;">
                                                 <div style="margin-bottom: 5px;">
                                                     <span style="font-weight: 600; color: <?php echo $is_malware ? '#d63638' : '#46b450'; ?>;">
-                                                        <?php echo $is_malware ? '⚠️ Malicious' : '✅ Appears Safe'; ?>
+                                                        <?php echo $is_malware ? 'MALICIOUS' : 'SAFE'; ?>
                                                     </span>
                                                 </div>
                                                 <div style="font-size: 12px; color: #000000; opacity: 0.8; line-height: 1.4;">

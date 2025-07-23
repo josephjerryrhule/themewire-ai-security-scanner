@@ -378,6 +378,9 @@
       case "ai_analysis":
         stageText = "Analyzing suspicious files with AI";
         break;
+      case "completed":
+        stageText = "Scan completed successfully";
+        break;
       default:
         stageText = "Scanning in progress";
     }
@@ -394,7 +397,11 @@
       if (stages[i] === stage) {
         status = "in-progress";
         statusText = "In Progress";
-      } else if (stages.indexOf(stage) > stages.indexOf(stages[i])) {
+      } else if (
+        stages.indexOf(stage) > stages.indexOf(stages[i]) ||
+        stage === "completed" ||
+        percent >= 100
+      ) {
         status = "completed";
         statusText = "Completed";
       }
@@ -414,6 +421,11 @@
           stageName = "Uploads Directory";
           break;
         case "ai_analysis":
+          stageText = "Analyzing suspicious files with AI";
+          break;
+        case "completed":
+          stageText = "Scan completed successfully";
+          break;
           stageName = "AI Analysis";
           break;
       }
@@ -1183,6 +1195,9 @@
       case "ai_analysis":
         stageText = "Analyzing suspicious files with AI";
         break;
+      case "completed":
+        stageText = "Scan completed successfully";
+        break;
       default:
         stageText = "Scanning in progress";
     }
@@ -1199,7 +1214,11 @@
       if (stages[i] === stage) {
         status = "in-progress";
         statusText = "In Progress";
-      } else if (stages.indexOf(stage) > stages.indexOf(stages[i])) {
+      } else if (
+        stages.indexOf(stage) > stages.indexOf(stages[i]) ||
+        stage === "completed" ||
+        percent >= 100
+      ) {
         status = "completed";
         statusText = "Completed";
       }
@@ -1219,6 +1238,11 @@
           stageName = "Uploads Directory";
           break;
         case "ai_analysis":
+          stageText = "Analyzing suspicious files with AI";
+          break;
+        case "completed":
+          stageText = "Scan completed successfully";
+          break;
           stageName = "AI Analysis";
           break;
       }
@@ -1988,6 +2012,9 @@
       case "ai_analysis":
         stageText = "Analyzing suspicious files with AI";
         break;
+      case "completed":
+        stageText = "Scan completed successfully";
+        break;
       default:
         stageText = "Scanning in progress";
     }
@@ -2004,7 +2031,11 @@
       if (stages[i] === stage) {
         status = "in-progress";
         statusText = "In Progress";
-      } else if (stages.indexOf(stage) > stages.indexOf(stages[i])) {
+      } else if (
+        stages.indexOf(stage) > stages.indexOf(stages[i]) ||
+        stage === "completed" ||
+        percent >= 100
+      ) {
         status = "completed";
         statusText = "Completed";
       }
@@ -2024,6 +2055,11 @@
           stageName = "Uploads Directory";
           break;
         case "ai_analysis":
+          stageText = "Analyzing suspicious files with AI";
+          break;
+        case "completed":
+          stageText = "Scan completed successfully";
+          break;
           stageName = "AI Analysis";
           break;
       }
@@ -2688,13 +2724,17 @@
             if (data.recently_completed) {
               clearInterval(pollInterval);
               pollInterval = null;
-              
-              updateProgressBar(100, "completed", "Scan completed successfully!");
-              
+
+              updateProgressBar(
+                100,
+                "completed",
+                "Scan completed successfully!"
+              );
+
               var statusArea = $("#scan-status-area");
               var startButton = $("#start-scan-button");
               var stopButton = $("#stop-scan-button");
-              
+
               statusArea.html(
                 '<div class="notice notice-success"><p>Scan completed! Found ' +
                   (data.issues_found || 0) +
@@ -2704,7 +2744,7 @@
               if (stopButton.length) {
                 stopButton.prop("disabled", true);
               }
-              
+
               return; // Exit early
             }
 
@@ -2821,6 +2861,14 @@
                 }
 
                 updateProgressBar(100, "completed", completedMessage);
+
+                // Mark all stages as completed when scan finishes
+                for (var stage in stageProgress) {
+                  if (stageProgress.hasOwnProperty(stage)) {
+                    stageProgress[stage] = 100;
+                  }
+                }
+
                 statusArea.html(
                   '<div class="notice notice-success"><p>Scan completed! Found ' +
                     (data.issues_found || 0) +
@@ -2872,11 +2920,14 @@
               ) {
                 // Check if this might be a recently completed scan
                 var debugInfo = response.data.debug || {};
-                var hasRecentScan = debugInfo.recent_scan_id && debugInfo.recent_scan_id > 0;
-                
+                var hasRecentScan =
+                  debugInfo.recent_scan_id && debugInfo.recent_scan_id > 0;
+
                 if (hasRecentScan) {
                   // This looks like a recently completed scan - stop polling
-                  console.log("Detected recently completed scan - stopping polling");
+                  console.log(
+                    "Detected recently completed scan - stopping polling"
+                  );
                   clearInterval(pollInterval);
                   pollInterval = null;
                   updateProgressBar(
@@ -2884,12 +2935,12 @@
                     "completed",
                     "Scan completed successfully!"
                   );
-                  
+
                   // Update UI to show completion
                   var statusArea = $("#scan-status-area");
                   var startButton = $("#start-scan-button");
                   var stopButton = $("#stop-scan-button");
-                  
+
                   statusArea.html(
                     '<div class="notice notice-success"><p>Scan completed successfully!</p></div>'
                   );
@@ -2897,10 +2948,10 @@
                   if (stopButton.length) {
                     stopButton.prop("disabled", true);
                   }
-                  
+
                   return; // Exit without attempting recovery
                 }
-                
+
                 // This could be a temporary issue during stage transition
                 // Try to recover by attempting to restart optimized scan processing
                 console.log("Attempting scan recovery...");
@@ -3196,11 +3247,75 @@
       },
       error: function () {
         statusSpan.html(
-          '<span style="color: #d63638;">✗ Connection failed</span>'
+          '<span style="color: #d63638;">Connection failed</span>'
         );
       },
       complete: function () {
         button.prop("disabled", false).text("Test API Key");
+      },
+    });
+  });
+
+  // Enhanced API Test Button Handler for New UI
+  $(document).on("click", ".test-api-button", function (e) {
+    e.preventDefault();
+    var button = $(this);
+    var provider = button.data("provider");
+    var apiKeyInput = $("#twss_" + provider + "_api_key");
+    var apiKey = apiKeyInput.val();
+    var statusDiv = $("#" + provider + "-api-status");
+
+    // Check if we should use the saved key (when input is empty but placeholder shows a saved key)
+    var useSavedKey = false;
+    var placeholder = apiKeyInput.attr("placeholder");
+    if (!apiKey && placeholder && placeholder.includes("*")) {
+      useSavedKey = true;
+      apiKey = "USE_SAVED_KEY"; // Special flag for backend
+    }
+
+    if (!apiKey) {
+      statusDiv
+        .removeClass("success error")
+        .addClass("error")
+        .html("Please enter an API key first")
+        .show();
+      return;
+    }
+
+    // Show loading state
+    button.prop("disabled", true).text("Testing...");
+    statusDiv.removeClass("success error").html("Testing connection...").show();
+
+    $.ajax({
+      url: twss_data.ajax_url,
+      type: "POST",
+      data: {
+        action: "twss_test_" + provider + "_api",
+        api_key: apiKey,
+        use_saved_key: useSavedKey,
+        nonce: twss_data.nonce,
+      },
+      success: function (response) {
+        if (response.success) {
+          statusDiv
+            .removeClass("error")
+            .addClass("success")
+            .html("Connection successful: " + response.data.message);
+        } else {
+          statusDiv
+            .removeClass("success")
+            .addClass("error")
+            .html("Connection failed: " + response.data.message);
+        }
+      },
+      error: function () {
+        statusDiv
+          .removeClass("success")
+          .addClass("error")
+          .html("Connection failed");
+      },
+      complete: function () {
+        button.prop("disabled", false).text("Test Connection");
       },
     });
   });

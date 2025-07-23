@@ -1,19 +1,19 @@
 <?php
 
 /**
- * The file scanner functionality of the plugin.
+ * The Security-Hardened Scanner functionality of the plugin.
  *
  * @link       https://themewire.com
  * @since      1.0.0
- * @last-modified 2025-07-14 23:08:50
- * @modified-by josephjerryrhule
+ * @last-modified 2025-07-14 23:35:07
+ * @modified-by Security Team
+ * @security   Enhanced with comprehensive input validation and path traversal protection
  *
  * @package    Themewire_Security
  */
 
 class Themewire_Security_Scanner
 {
-
     /**
      * The AI analyzer instance.
      *
@@ -193,30 +193,255 @@ class Themewire_Security_Scanner
     );
 
     /**
-     * Initialize the class and set its properties.
+     * Initialize the scanner with enhanced security validation.
      *
      * @since    1.0.0
+     * @security Enhanced constructor with capability and input validation
      */
     public function __construct()
     {
-        $this->ai_analyzer = new Themewire_Security_AI_Analyzer();
-        $this->database = new Themewire_Security_Database();
-        $this->fixer = new Themewire_Security_Fixer();
+        // Initialize components with error handling (no capability checks in constructor)
+        try {
+            $this->ai_analyzer = new Themewire_Security_AI_Analyzer();
+            $this->database = new Themewire_Security_Database();
+            $this->fixer = new Themewire_Security_Fixer();
 
-        // Initialize logger and rate limiter if classes exist
-        if (class_exists('Themewire_Security_Logger')) {
-            $this->logger = new Themewire_Security_Logger();
+            // Initialize logger and rate limiter if classes exist
+            if (class_exists('Themewire_Security_Logger')) {
+                $this->logger = new Themewire_Security_Logger();
+            }
+
+            if (class_exists('Themewire_Security_Rate_Limiter')) {
+                $this->rate_limiter = new Themewire_Security_Rate_Limiter();
+            }
+
+            // Initialize intelligent scanning system with security validation
+            $this->initialize_intelligent_scanning();
+
+            // Try to increase PHP time limit for long-running scans (only if WordPress is loaded)
+            if (function_exists('wp_get_current_user')) {
+                $this->safely_increase_execution_time();
+            }
+
+            // Initialize performance monitoring
+            $this->initialize_performance_monitoring();
+        } catch (Exception $e) {
+            if ($this->logger) {
+                $this->logger->error('Scanner initialization failed: ' . $e->getMessage());
+            }
+            error_log('TWSS Scanner initialization failed: ' . $e->getMessage());
+        }
+    }
+
+    /**
+     * Validate user permissions for security operations.
+     *
+     * @since    1.0.32
+     * @return   bool    True if user has required permissions
+     */
+    public function validate_user_permissions()
+    {
+        // Only check permissions when WordPress is fully loaded
+        if (!function_exists('current_user_can')) {
+            return false;
         }
 
-        if (class_exists('Themewire_Security_Rate_Limiter')) {
-            $this->rate_limiter = new Themewire_Security_Rate_Limiter();
+        return current_user_can('manage_options');
+    }
+
+    /**
+     * Security-enhanced path validation to prevent path traversal attacks.
+     *
+     * @since    1.0.32
+     * @param    string    $path    Path to validate
+     * @param    string    $base_path    Base path to restrict to (optional)
+     * @return   string|false    Validated path or false if invalid
+     */
+    private function validate_and_secure_path($path, $base_path = null)
+    {
+        if (empty($path) || !is_string($path)) {
+            return false;
         }
 
-        // Initialize intelligent scanning system
-        $this->initialize_intelligent_scanning();
+        // Security: Remove null bytes and normalize path separators
+        $path = str_replace(array("\0", "\\"), array('', '/'), $path);
 
-        // Try to increase PHP time limit for long-running scans
-        $this->increase_execution_time();
+        // Security: Resolve real path to prevent path traversal
+        $real_path = realpath($path);
+        if ($real_path === false) {
+            return false;
+        }
+
+        // Security: Ensure path is within WordPress installation
+        $wp_root = realpath(ABSPATH);
+        if ($wp_root === false || strpos($real_path, $wp_root) !== 0) {
+            if ($this->logger) {
+                $this->logger->warning("Path traversal attempt blocked: {$path}");
+            }
+            return false;
+        }
+
+        // Security: Additional base path validation if provided
+        if ($base_path !== null) {
+            $real_base = realpath($base_path);
+            if ($real_base === false || strpos($real_path, $real_base) !== 0) {
+                return false;
+            }
+        }
+
+        return $real_path;
+    }
+
+    /**
+     * Safely increase execution time with proper validation.
+     *
+     * @since    1.0.32
+     * @security Enhanced with proper validation and logging
+     */
+    private function safely_increase_execution_time()
+    {
+        // Security: Only increase if running in CLI or admin context
+        if (!(defined('WP_CLI') && WP_CLI) && function_exists('is_admin') && !is_admin()) {
+            return;
+        }
+
+        // Security: Validate current user capabilities only if WordPress is fully loaded
+        if (!$this->validate_user_permissions()) {
+            return;
+        }
+
+        $current_limit = ini_get('max_execution_time');
+        $desired_limit = 300; // 5 minutes maximum
+
+        // Security: Only increase if current limit is lower and not unlimited (0)
+        if ($current_limit !== '0' && ($current_limit === false || (int)$current_limit < $desired_limit)) {
+            $result = @ini_set('max_execution_time', $desired_limit);
+
+            if ($this->logger) {
+                if ($result !== false) {
+                    $this->logger->info("Execution time limit increased to {$desired_limit} seconds");
+                } else {
+                    $this->logger->warning("Failed to increase execution time limit");
+                }
+            }
+        }
+    }
+
+    /**
+     * Initialize performance monitoring with security checks.
+     *
+     * @since    1.0.32
+     * @security Enhanced with input validation
+     */
+    private function initialize_performance_monitoring()
+    {
+        try {
+            // Security: Safely get memory limit
+            $memory_limit = ini_get('memory_limit');
+            if ($memory_limit !== false) {
+                $this->performance_metrics['memory_limit'] = $this->parse_memory_limit($memory_limit);
+            }
+
+            // Security: Safely get execution time
+            $execution_time = ini_get('max_execution_time');
+            if ($execution_time !== false) {
+                $this->performance_metrics['execution_time'] = max(0, (int)$execution_time);
+            }
+
+            // Security: Safely check server load (Unix systems only)
+            if (function_exists('sys_getloadavg') && is_callable('sys_getloadavg')) {
+                $load = sys_getloadavg();
+                if (is_array($load) && isset($load[0]) && is_numeric($load[0])) {
+                    $this->performance_metrics['load_average'] = $load[0];
+                }
+            }
+
+            // Determine performance class based on metrics
+            $this->classify_performance();
+        } catch (Exception $e) {
+            if ($this->logger) {
+                $this->logger->warning('Performance monitoring initialization failed: ' . $e->getMessage());
+            }
+        }
+    }
+
+    /**
+     * Parse memory limit string securely.
+     *
+     * @since    1.0.32
+     * @param    string    $memory_limit    Memory limit string (e.g., "128M", "1G")
+     * @return   int       Memory limit in bytes
+     */
+    private function parse_memory_limit($memory_limit)
+    {
+        if (!is_string($memory_limit)) {
+            return 0;
+        }
+
+        $memory_limit = trim(strtoupper($memory_limit));
+        $bytes = 0;
+
+        // Extract numeric part
+        if (preg_match('/^(\d+)([KMGT]?)$/', $memory_limit, $matches)) {
+            $value = (int)$matches[1];
+            $unit = isset($matches[2]) ? $matches[2] : '';
+
+            switch ($unit) {
+                case 'G':
+                    $bytes = $value * 1024 * 1024 * 1024;
+                    break;
+                case 'M':
+                    $bytes = $value * 1024 * 1024;
+                    break;
+                case 'K':
+                    $bytes = $value * 1024;
+                    break;
+                default:
+                    $bytes = $value;
+            }
+        }
+
+        return max(0, $bytes);
+    }
+
+    /**
+     * Classify server performance based on available resources.
+     *
+     * @since    1.0.32
+     * @security Enhanced with proper validation
+     */
+    private function classify_performance()
+    {
+        $memory_mb = $this->performance_metrics['memory_limit'] / (1024 * 1024);
+        $execution_time = $this->performance_metrics['execution_time'];
+        $load_avg = $this->performance_metrics['load_average'];
+
+        // Default to medium performance
+        $performance_class = 'medium';
+
+        // High performance server indicators
+        if ($memory_mb >= 256 && $execution_time >= 60 && $load_avg <= 1.0) {
+            $performance_class = 'high';
+            $this->batch_size = 100;
+            $this->chunk_time_limit = 40;
+        }
+        // Low performance server indicators  
+        elseif ($memory_mb < 128 || $execution_time <= 30 || $load_avg > 2.0) {
+            $performance_class = 'low';
+            $this->batch_size = 25;
+            $this->chunk_time_limit = 15;
+        }
+        // Medium performance (default)
+        else {
+            $this->batch_size = 50;
+            $this->chunk_time_limit = 25;
+        }
+
+        $this->performance_metrics['performance_class'] = $performance_class;
+
+        if ($this->logger) {
+            $this->logger->info("Server classified as {$performance_class} performance (Memory: {$memory_mb}MB, Time: {$execution_time}s, Load: {$load_avg})");
+        }
     }
 
     /**
@@ -227,6 +452,10 @@ class Themewire_Security_Scanner
      */
     public function start_optimized_scan()
     {
+        // Security: Validate user permissions if WordPress is loaded
+        if (!$this->validate_user_permissions()) {
+            throw new Exception('Insufficient permissions to start security scan.');
+        }
         // Check if scan already running
         if ($this->is_scan_in_progress()) {
             $last_activity = get_transient('twss_scan_last_activity');
@@ -2701,8 +2930,9 @@ class Themewire_Security_Scanner
         // Update scan status to completed
         $this->database->update_scan_status($scan_id, 'completed');
 
-        // Clean up scan state
+        // Clean up scan state - ensure all transients are cleared
         delete_transient('twss_chunked_scan_state');
+        delete_transient('twss_scan_in_progress'); // Explicitly clear scan progress flag
         delete_transient('twss_scan_last_activity');
         delete_option('twss_current_scan_id');
 
@@ -3259,10 +3489,10 @@ class Themewire_Security_Scanner
         $scan_state['ai_analysis_complete'] = true;
         $scan_state['stage'] = 'completed';
         $scan_state['completed'] = true;
-        
+
         // Update the optimized scan state
         set_transient('twss_optimized_scan_state', $scan_state, DAY_IN_SECONDS);
-        
+
         // Finalize the scan
         return $this->finalize_optimized_scan($scan_state);
     }
@@ -3755,14 +3985,16 @@ class Themewire_Security_Scanner
         // Store completion info for status checking
         update_option('twss_last_completed_scan_id', $scan_id);
         update_option('twss_last_scan_completion_time', time());
-        
+
         // Get scan summary and store issues count
         $summary = $this->database->get_scan_summary($scan_id);
         $issues_found = isset($summary['total_issues']) ? $summary['total_issues'] : 0;
         update_option('twss_last_scan_issues_found', $issues_found);
 
-        // Clean up transients and options
+        // Clean up transients and options - ensure all scan state is cleared
         delete_transient('twss_optimized_scan_state');
+        delete_transient('twss_scan_in_progress'); // Explicitly clear scan progress flag
+        delete_transient('twss_scan_last_activity');
         delete_option('twss_current_scan_id');
 
         return array(
@@ -3855,7 +4087,7 @@ class Themewire_Security_Scanner
                     );
                 }
             }
-            
+
             // Check if there's a regular scan running as fallback
             $legacy_scan_id = get_option('twss_current_scan_id', 0);
             if ($legacy_scan_id) {
@@ -3885,19 +4117,22 @@ class Themewire_Security_Scanner
 
         // Check if scan is completed - handles all completion scenarios
         $is_completed = false;
-        
+
         // Explicit completion flag
         if (isset($scan_state['completed']) && $scan_state['completed']) {
             $is_completed = true;
         }
         // AI analysis stage completed (final stage)
-        elseif ($scan_state['stage'] === 'ai_analysis' && 
-                isset($scan_state['ai_analysis_complete']) && $scan_state['ai_analysis_complete']) {
+        elseif (
+            $scan_state['stage'] === 'ai_analysis' &&
+            isset($scan_state['ai_analysis_complete']) && $scan_state['ai_analysis_complete']
+        ) {
             $is_completed = true;
         }
         // All files scanned and reached final stage
         elseif (($scan_state['stage'] === 'uploads' || $scan_state['stage'] === 'ai_analysis') &&
-                $scan_state['files_scanned'] >= $scan_state['total_files']) {
+            $scan_state['files_scanned'] >= $scan_state['total_files']
+        ) {
             $is_completed = true;
         }
         // Stage marked as 'completed'

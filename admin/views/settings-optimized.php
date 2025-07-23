@@ -237,27 +237,15 @@ foreach (['openai_api_key', 'gemini_api_key', 'openrouter_api_key', 'groq_api_ke
                         <label for="twss_openai_api_key" class="form-label">
                             <?php echo esc_html__('OpenAI API Key', 'themewire-security'); ?>
                         </label>
-                        <div style="display: flex; gap: 10px; align-items: flex-end;">
-                            <div style="flex: 1;">
-                                <input type="password" name="twss_openai_api_key" id="twss_openai_api_key"
-                                    class="form-input" placeholder="<?php echo esc_attr($masked_keys['openai_api_key']); ?>"
-                                    autocomplete="off">
-                                <p class="form-description">
-                                    <?php if (!empty($current_settings['openai_api_key'])): ?>
-                                        <strong>✓ API key saved.</strong> Leave empty to keep current key, or enter new key to update.
-                                        <br>
-                                    <?php endif; ?>
-                                    <?php echo sprintf(
-                                        esc_html__('Get your API key from %s', 'themewire-security'),
-                                        '<a href="https://platform.openai.com/api-keys" target="_blank" rel="noopener">platform.openai.com</a>'
-                                    ); ?>
-                                </p>
-                            </div>
-                            <button type="button" class="test-api-button btn btn-secondary" data-provider="openai">
-                                <?php echo empty($current_settings['openai_api_key']) ? esc_html__('Test Connection', 'themewire-security') : esc_html__('Test Saved Key', 'themewire-security'); ?>
-                            </button>
-                        </div>
-                        <div id="openai-api-status" class="api-status" style="display: none;"></div>
+                        <input type="password" name="twss_openai_api_key" id="twss_openai_api_key"
+                            class="form-input" placeholder="<?php echo esc_attr($masked_keys['openai_api_key']); ?>"
+                            autocomplete="off">
+                        <p class="form-description">
+                            <?php echo sprintf(
+                                esc_html__('Get your API key from %s', 'themewire-security'),
+                                '<a href="https://platform.openai.com/api-keys" target="_blank" rel="noopener">platform.openai.com</a>'
+                            ); ?>
+                        </p>
                     </div>
                 </div>
 
@@ -267,23 +255,15 @@ foreach (['openai_api_key', 'gemini_api_key', 'openrouter_api_key', 'groq_api_ke
                         <label for="twss_gemini_api_key" class="form-label">
                             <?php echo esc_html__('Google Gemini API Key', 'themewire-security'); ?>
                         </label>
-                        <div style="display: flex; gap: 10px; align-items: flex-end;">
-                            <div style="flex: 1;">
-                                <input type="password" name="twss_gemini_api_key" id="twss_gemini_api_key"
-                                    class="form-input" placeholder="<?php echo esc_attr($masked_keys['gemini_api_key']); ?>"
-                                    autocomplete="off">
-                                <p class="form-description">
-                                    <?php echo sprintf(
-                                        esc_html__('Get your API key from %s', 'themewire-security'),
-                                        '<a href="https://makersuite.google.com/app/apikey" target="_blank" rel="noopener">Google AI Studio</a>'
-                                    ); ?>
-                                </p>
-                            </div>
-                            <button type="button" class="test-api-button btn btn-secondary" data-provider="gemini">
-                                <?php echo esc_html__('Test Connection', 'themewire-security'); ?>
-                            </button>
-                        </div>
-                        <div id="gemini-api-status" class="api-status" style="display: none;"></div>
+                        <input type="password" name="twss_gemini_api_key" id="twss_gemini_api_key"
+                            class="form-input" placeholder="<?php echo esc_attr($masked_keys['gemini_api_key']); ?>"
+                            autocomplete="off">
+                        <p class="form-description">
+                            <?php echo sprintf(
+                                esc_html__('Get your API key from %s', 'themewire-security'),
+                                '<a href="https://makersuite.google.com/app/apikey" target="_blank" rel="noopener">Google AI Studio</a>'
+                            ); ?>
+                        </p>
                     </div>
                 </div>
 
@@ -293,15 +273,9 @@ foreach (['openai_api_key', 'gemini_api_key', 'openrouter_api_key', 'groq_api_ke
                         <label for="twss_openrouter_api_key" class="form-label">
                             <?php echo esc_html__('OpenRouter API Key', 'themewire-security'); ?>
                         </label>
-                        <div style="display: flex; gap: 10px; align-items: flex-end;">
-                            <input type="password" name="twss_openrouter_api_key" id="twss_openrouter_api_key"
-                                class="form-input" placeholder="<?php echo esc_attr($masked_keys['openrouter_api_key']); ?>"
-                                autocomplete="off" style="flex: 1;">
-                            <button type="button" class="test-api-button btn btn-secondary" data-provider="openrouter">
-                                <?php echo esc_html__('Test Connection', 'themewire-security'); ?>
-                            </button>
-                        </div>
-                        <div id="openrouter-api-status" class="api-status" style="display: none;"></div>
+                        <input type="password" name="twss_openrouter_api_key" id="twss_openrouter_api_key"
+                            class="form-input" placeholder="<?php echo esc_attr($masked_keys['openrouter_api_key']); ?>"
+                            autocomplete="off">
                     </div>
                     <div class="form-field">
                         <label for="twss_openrouter_model" class="form-label">
@@ -322,15 +296,9 @@ foreach (['openai_api_key', 'gemini_api_key', 'openrouter_api_key', 'groq_api_ke
                         <label for="twss_groq_api_key" class="form-label">
                             <?php echo esc_html__('Groq API Key', 'themewire-security'); ?>
                         </label>
-                        <div style="display: flex; gap: 10px; align-items: flex-end;">
-                            <input type="password" name="twss_groq_api_key" id="twss_groq_api_key"
-                                class="form-input" placeholder="<?php echo esc_attr($masked_keys['groq_api_key']); ?>"
-                                autocomplete="off" style="flex: 1;">
-                            <button type="button" class="test-api-button btn btn-secondary" data-provider="groq">
-                                <?php echo esc_html__('Test Connection', 'themewire-security'); ?>
-                            </button>
-                        </div>
-                        <div id="groq-api-status" class="api-status" style="display: none;"></div>
+                        <input type="password" name="twss_groq_api_key" id="twss_groq_api_key"
+                            class="form-input" placeholder="<?php echo esc_attr($masked_keys['groq_api_key']); ?>"
+                            autocomplete="off">
                     </div>
                     <div class="form-field">
                         <label for="twss_groq_model" class="form-label">

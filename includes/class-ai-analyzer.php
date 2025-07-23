@@ -69,41 +69,104 @@ class Themewire_Security_AI_Analyzer
     }
 
     /**
-     * Initialize AI API clients
+     * Initialize AI API clients with enhanced security validation
      *
-     * @since    1.0.0
+     * @since    1.0.32
+     * @security Enhanced API key validation and sanitization
      */
     private function init_ai_clients()
     {
-        $ai_provider = get_option('twss_ai_provider', 'openai');
-
-        if ($ai_provider === 'openai') {
-            $api_key = get_option('twss_openai_api_key', '');
-            if (!empty($api_key)) {
-                // Initialize OpenAI client
-                $this->init_openai_client($api_key);
-            }
-        } else if ($ai_provider === 'gemini') {
-            $api_key = get_option('twss_gemini_api_key', '');
-            if (!empty($api_key)) {
-                // Initialize Gemini client
-                $this->init_gemini_client($api_key);
-            }
-        } else if ($ai_provider === 'openrouter') {
-            $api_key = get_option('twss_openrouter_api_key', '');
-            if (!empty($api_key)) {
-                // Initialize OpenRouter client
-                $this->init_openrouter_client($api_key);
-            }
-        } else if ($ai_provider === 'groq') {
-            $api_key = get_option('twss_groq_api_key', '');
-            if (!empty($api_key)) {
-                // Initialize Groq client
-                $this->init_groq_client($api_key);
-            }
+        // Check if WordPress functions are available
+        if (!function_exists('sanitize_text_field') || !function_exists('get_option')) {
+            return; // Skip initialization if WordPress not loaded
         }
 
-        // If no API key is provided, we'll use the fallback method
+        $ai_provider = sanitize_text_field(get_option('twss_ai_provider', 'openai'));
+
+        // Security: Validate provider whitelist
+        $allowed_providers = array('openai', 'gemini', 'openrouter', 'groq');
+        if (!in_array($ai_provider, $allowed_providers, true)) {
+            error_log('TWSS Security: Invalid AI provider detected: ' . $ai_provider);
+            return;
+        }
+
+        switch ($ai_provider) {
+            case 'openai':
+                $api_key = $this->sanitize_api_key(get_option('twss_openai_api_key', ''));
+                if ($this->validate_api_key_format($api_key, 'openai')) {
+                    $this->init_openai_client($api_key);
+                }
+                break;
+
+            case 'gemini':
+                $api_key = $this->sanitize_api_key(get_option('twss_gemini_api_key', ''));
+                if ($this->validate_api_key_format($api_key, 'gemini')) {
+                    $this->init_gemini_client($api_key);
+                }
+                break;
+
+            case 'openrouter':
+                $api_key = $this->sanitize_api_key(get_option('twss_openrouter_api_key', ''));
+                if ($this->validate_api_key_format($api_key, 'openrouter')) {
+                    $this->init_openrouter_client($api_key);
+                }
+                break;
+
+            case 'groq':
+                $api_key = $this->sanitize_api_key(get_option('twss_groq_api_key', ''));
+                if ($this->validate_api_key_format($api_key, 'groq')) {
+                    $this->init_groq_client($api_key);
+                }
+                break;
+        }
+    }
+
+    /**
+     * Sanitize API key input
+     *
+     * @since    1.0.32
+     * @param    string    $api_key    Raw API key
+     * @return   string    Sanitized API key
+     * @security Prevent injection attacks via API keys
+     */
+    private function sanitize_api_key($api_key)
+    {
+        // Remove any potentially dangerous characters
+        $api_key = preg_replace('/[^a-zA-Z0-9\-_]/', '', $api_key);
+
+        // Limit length to reasonable bounds
+        $api_key = substr($api_key, 0, 200);
+
+        return $api_key;
+    }
+
+    /**
+     * Validate API key format for security
+     *
+     * @since    1.0.32
+     * @param    string    $api_key     API key to validate
+     * @param    string    $provider    Provider name
+     * @return   boolean   True if valid format
+     * @security Prevent malformed API keys from being used
+     */
+    private function validate_api_key_format($api_key, $provider)
+    {
+        if (empty($api_key)) {
+            return false;
+        }
+
+        $patterns = array(
+            'openai' => '/^sk-[a-zA-Z0-9]{48,}$/',
+            'gemini' => '/^[a-zA-Z0-9_-]{39}$/',
+            'openrouter' => '/^sk-or-[a-zA-Z0-9_-]{43}$/',
+            'groq' => '/^gsk_[a-zA-Z0-9]{52}$/'
+        );
+
+        if (!isset($patterns[$provider])) {
+            return false;
+        }
+
+        return preg_match($patterns[$provider], $api_key) === 1;
     }
 
     /**
@@ -159,25 +222,165 @@ class Themewire_Security_AI_Analyzer
     }
 
     /**
-     * Queue a file for AI analysis
+     * Queue a file for AI analysis with enhanced security validation
      *
-     * @since    1.0.0
+     * @since    1.0.32
      * @param    int       $scan_id    The scan ID
      * @param    string    $file_path  Path to the file
+     * @return   boolean   True on success, false on failure
+     * @security Enhanced path validation and file type checking
      */
     public function queue_file_for_analysis($scan_id, $file_path)
     {
-        // Only queue files that exist and are readable
-        if (!file_exists($file_path) || !is_readable($file_path)) {
+        // Security: Validate scan ID is positive integer
+        if (!is_int($scan_id) || $scan_id <= 0) {
+            error_log('TWSS Security: Invalid scan ID provided: ' . var_export($scan_id, true));
             return false;
         }
 
+        // Security: Validate and sanitize file path
+        $file_path = $this->validate_and_sanitize_file_path($file_path);
+        if ($file_path === false) {
+            return false;
+        }
+
+        // Security: Check file exists, is readable, and within allowed bounds
+        if (!$this->is_safe_file_for_analysis($file_path)) {
+            return false;
+        }
+
+        // Initialize scan queue if needed
         if (!isset($this->queued_files[$scan_id])) {
             $this->queued_files[$scan_id] = array();
         }
 
+        // Security: Prevent queue overflow (max 1000 files per scan)
+        if (count($this->queued_files[$scan_id]) >= 1000) {
+            error_log('TWSS Security: Queue limit reached for scan ID: ' . $scan_id);
+            return false;
+        }
+
         $this->queued_files[$scan_id][] = $file_path;
         return true;
+    }
+
+    /**
+     * Validate and sanitize file path for security
+     *
+     * @since    1.0.32
+     * @param    string    $file_path    Raw file path
+     * @return   string|false    Sanitized path or false if invalid
+     * @security Prevent path traversal and injection attacks
+     */
+    private function validate_and_sanitize_file_path($file_path)
+    {
+        // Basic type and length validation
+        if (!is_string($file_path) || strlen($file_path) > 500) {
+            error_log('TWSS Security: Invalid file path type or length');
+            return false;
+        }
+
+        // Security: Prevent path traversal attacks
+        if (strpos($file_path, '..') !== false) {
+            error_log('TWSS Security: Path traversal attempt blocked: ' . $file_path);
+            return false;
+        }
+
+        // Security: Ensure path is absolute and within WordPress directory
+        $wp_root = rtrim(ABSPATH, '/');
+        $real_path = realpath($file_path);
+
+        if ($real_path === false || strpos($real_path, $wp_root) !== 0) {
+            error_log('TWSS Security: File outside WordPress directory blocked: ' . $file_path);
+            return false;
+        }
+
+        return $real_path;
+    }
+
+    /**
+     * Check if file is safe for analysis
+     *
+     * @since    1.0.32
+     * @param    string    $file_path    File path to check
+     * @return   boolean   True if safe for analysis
+     * @security Enhanced file safety validation
+     */
+    private function is_safe_file_for_analysis($file_path)
+    {
+        // Check basic file properties
+        if (!file_exists($file_path) || !is_readable($file_path) || !is_file($file_path)) {
+            return false;
+        }
+
+        // Security: Check file size limits (max 10MB for analysis)
+        $file_size = filesize($file_path);
+        if ($file_size === false || $file_size > 10485760) { // 10MB
+            error_log('TWSS Security: File too large for analysis: ' . $file_path . ' (' . $file_size . ' bytes)');
+            return false;
+        }
+
+        // Security: Validate file extension
+        $allowed_extensions = array('php', 'js', 'html', 'htm', 'css', 'sql', 'txt', 'htaccess');
+        $extension = strtolower(pathinfo($file_path, PATHINFO_EXTENSION));
+
+        if (!in_array($extension, $allowed_extensions, true)) {
+            // Allow files without extensions (common for malware)
+            if ($extension !== '') {
+                return false;
+            }
+        }
+
+        // Security: Basic binary file detection
+        if ($this->is_likely_binary_file($file_path)) {
+            return false;
+        }
+
+        return true;
+    }
+
+    /**
+     * Detect if file is likely binary (not suitable for text analysis)
+     *
+     * @since    1.0.32
+     * @param    string    $file_path    File path to check
+     * @return   boolean   True if likely binary
+     * @security Prevent analysis of binary files that could cause issues
+     */
+    private function is_likely_binary_file($file_path)
+    {
+        // Read first 1024 bytes to check for binary content
+        $handle = fopen($file_path, 'rb');
+        if ($handle === false) {
+            return true; // If we can't read it, treat as binary
+        }
+
+        $chunk = fread($handle, 1024);
+        fclose($handle);
+
+        if ($chunk === false) {
+            return true;
+        }
+
+        // Check for null bytes (common in binary files)
+        if (strpos($chunk, "\0") !== false) {
+            return true;
+        }
+
+        // Check for high ratio of non-printable characters
+        $printable = 0;
+        $total = strlen($chunk);
+
+        for ($i = 0; $i < $total; $i++) {
+            $ascii = ord($chunk[$i]);
+            // Count printable ASCII characters and common whitespace
+            if (($ascii >= 32 && $ascii <= 126) || in_array($ascii, array(9, 10, 13))) {
+                $printable++;
+            }
+        }
+
+        // If less than 70% printable characters, likely binary
+        return ($printable / $total) < 0.7;
     }
 
     /**
@@ -193,53 +396,167 @@ class Themewire_Security_AI_Analyzer
     }
 
     /**
-     * Analyze a file using AI
+     * Analyze a file using AI with enhanced security validation
      *
-     * @since    1.0.0
+     * @since    1.0.32
      * @param    string    $file_path    Path to the file
-     * @return   array     Analysis result
+     * @return   array     Analysis result with security enhancements
+     * @security Enhanced file validation and content sanitization
      */
     public function analyze_file($file_path)
     {
-        // Validate file exists and is readable before analysis
-        if (!file_exists($file_path) || !is_readable($file_path)) {
+        // Security: Validate and sanitize file path
+        $file_path = $this->validate_and_sanitize_file_path($file_path);
+        if ($file_path === false) {
             return array(
                 'is_malicious' => false,
                 'confidence' => 0,
                 'indicators' => array(),
-                'error' => 'File not found or not readable'
+                'error' => 'Invalid or unsafe file path'
             );
         }
 
-        $file_content = file_get_contents($file_path);
+        // Security: Enhanced file safety check
+        if (!$this->is_safe_file_for_analysis($file_path)) {
+            return array(
+                'is_malicious' => false,
+                'confidence' => 0,
+                'indicators' => array(),
+                'error' => 'File not suitable for analysis'
+            );
+        }
+
+        // Security: Read file content with size limits and validation
+        $file_content = $this->safely_read_file_content($file_path);
         if ($file_content === false) {
             return array(
                 'is_malicious' => false,
                 'confidence' => 0,
                 'indicators' => array(),
-                'error' => 'Failed to read file content'
+                'error' => 'Failed to safely read file content'
             );
         }
 
-        $file_extension = pathinfo($file_path, PATHINFO_EXTENSION);
+        $file_extension = strtolower(pathinfo($file_path, PATHINFO_EXTENSION));
 
-        // Limit file content to prevent API limit issues
-        $file_content = $this->truncate_file_content($file_content, 10000);
+        // Security: Limit file content to prevent API abuse and resource exhaustion
+        $file_content = $this->truncate_file_content($file_content, 8000); // Reduced for security
 
-        $ai_provider = get_option('twss_ai_provider', 'openai');
-
-        if ($ai_provider === 'openai' && $this->openai_client) {
-            return $this->analyze_with_openai($file_path, $file_content, $file_extension);
-        } else if ($ai_provider === 'gemini' && $this->gemini_client) {
-            return $this->analyze_with_gemini($file_path, $file_content, $file_extension);
-        } else if ($ai_provider === 'openrouter' && $this->openrouter_client) {
-            return $this->analyze_with_openrouter($file_path, $file_content, $file_extension);
-        } else if ($ai_provider === 'groq' && $this->groq_client) {
-            return $this->analyze_with_groq($file_path, $file_content, $file_extension);
+        // Check if WordPress functions are available for getting AI provider
+        if (function_exists('sanitize_text_field') && function_exists('get_option')) {
+            $ai_provider = sanitize_text_field(get_option('twss_ai_provider', 'openai'));
         } else {
-            // Fallback to simple analysis
-            return $this->analyze_with_fallback($file_path, $file_content, $file_extension);
+            $ai_provider = 'openai'; // Default fallback
         }
+
+        // Use appropriate AI provider with fallback to secure pattern analysis
+        try {
+            switch ($ai_provider) {
+                case 'openai':
+                    if ($this->openai_client) {
+                        return $this->analyze_with_openai($file_path, $file_content, $file_extension);
+                    }
+                    break;
+
+                case 'gemini':
+                    if ($this->gemini_client) {
+                        return $this->analyze_with_gemini($file_path, $file_content, $file_extension);
+                    }
+                    break;
+
+                case 'openrouter':
+                    if ($this->openrouter_client) {
+                        return $this->analyze_with_openrouter($file_path, $file_content, $file_extension);
+                    }
+                    break;
+
+                case 'groq':
+                    if ($this->groq_client) {
+                        return $this->analyze_with_groq($file_path, $file_content, $file_extension);
+                    }
+                    break;
+            }
+        } catch (Exception $e) {
+            // Log error securely without exposing sensitive information
+            error_log('TWSS AI Analysis Error: ' . $e->getMessage());
+        }
+
+        // Always fallback to secure pattern-based analysis
+        return $this->analyze_with_fallback($file_path, $file_content, $file_extension);
+    }
+
+    /**
+     * Safely read file content with security constraints
+     *
+     * @since    1.0.32
+     * @param    string    $file_path    File path to read
+     * @return   string|false    File content or false on failure
+     * @security Memory-safe file reading with limits
+     */
+    private function safely_read_file_content($file_path)
+    {
+        // Security: Double-check file existence and readability
+        if (!file_exists($file_path) || !is_readable($file_path)) {
+            return false;
+        }
+
+        // Security: Check available memory before reading
+        $file_size = filesize($file_path);
+        if ($file_size === false) {
+            return false;
+        }
+
+        $memory_limit = ini_get('memory_limit');
+        $memory_available = $this->parse_memory_limit($memory_limit);
+
+        // Only read if file size is reasonable compared to available memory
+        if ($file_size > ($memory_available / 10)) { // Use max 10% of available memory
+            error_log('TWSS Security: File too large for safe reading: ' . $file_path);
+            return false;
+        }
+
+        // Security: Read with error handling
+        $content = @file_get_contents($file_path);
+        if ($content === false) {
+            return false;
+        }
+
+        // Security: Additional content validation
+        if (strlen($content) > 1048576) { // 1MB hard limit
+            error_log('TWSS Security: File content too large, truncating: ' . $file_path);
+            $content = substr($content, 0, 1048576);
+        }
+
+        return $content;
+    }
+
+    /**
+     * Parse memory limit string to bytes
+     *
+     * @since    1.0.32
+     * @param    string    $limit    Memory limit string (e.g., "128M", "1G")
+     * @return   int       Memory limit in bytes
+     * @security Helper for memory management
+     */
+    private function parse_memory_limit($limit)
+    {
+        $limit = trim($limit);
+        $last_char = strtolower($limit[strlen($limit) - 1]);
+        $number = (int)$limit;
+
+        switch ($last_char) {
+            case 'g':
+                $number *= 1024 * 1024 * 1024;
+                break;
+            case 'm':
+                $number *= 1024 * 1024;
+                break;
+            case 'k':
+                $number *= 1024;
+                break;
+        }
+
+        return $number;
     }
 
     /**
@@ -1225,9 +1542,9 @@ class Themewire_Security_AI_Analyzer
         $api_key = $this->openrouter_client->api_key;
         $url = 'https://openrouter.ai/api/v1/chat/completions';
 
-        // Get the actual website URL for tracking
-        $site_url = get_site_url();
-        $site_name = get_bloginfo('name');
+        // Get the actual website URL for tracking with fallback
+        $site_url = function_exists('get_site_url') ? get_site_url() : 'http://localhost';
+        $site_name = function_exists('get_bloginfo') ? get_bloginfo('name') : 'WordPress Site';
 
         $headers = array(
             'Content-Type: application/json',
@@ -1237,7 +1554,7 @@ class Themewire_Security_AI_Analyzer
         );
 
         $data = array(
-            'model' => get_option('twss_openrouter_model', 'openai/gpt-3.5-turbo'), // Updated to reliable model
+            'model' => function_exists('get_option') ? get_option('twss_openrouter_model', 'openai/gpt-3.5-turbo') : 'openai/gpt-3.5-turbo',
             'messages' => array(
                 array(
                     'role' => 'system',
@@ -1287,12 +1604,14 @@ class Themewire_Security_AI_Analyzer
 
                     // Try with a reliable fallback model
                     $fallback_models = ['openai/gpt-3.5-turbo', 'anthropic/claude-3-haiku', 'google/gemma-2-9b-it:free', 'meta-llama/llama-3-8b-instruct:free'];
-                    $current_model = get_option('twss_openrouter_model', 'openai/gpt-3.5-turbo');
+                    $current_model = function_exists('get_option') ? get_option('twss_openrouter_model', 'openai/gpt-3.5-turbo') : 'openai/gpt-3.5-turbo';
 
                     foreach ($fallback_models as $fallback_model) {
                         if ($fallback_model !== $current_model) {
                             // Update model setting and retry
-                            update_option('twss_openrouter_model', $fallback_model);
+                            if (function_exists('update_option')) {
+                                update_option('twss_openrouter_model', $fallback_model);
+                            }
                             $this->rate_limited_error_log("Switching to fallback model: {$fallback_model}");
                             throw new Exception("Model not available. Switched to {$fallback_model}. Please retry your request.");
                         }
@@ -1350,7 +1669,7 @@ class Themewire_Security_AI_Analyzer
         );
 
         $data = array(
-            'model' => get_option('twss_groq_model', 'llama-3.3-70b-versatile'),
+            'model' => function_exists('get_option') ? get_option('twss_groq_model', 'llama-3.3-70b-versatile') : 'llama-3.3-70b-versatile',
             'messages' => array(
                 array(
                     'role' => 'system',
@@ -1898,7 +2217,9 @@ class Themewire_Security_AI_Analyzer
 
             if ($available_model) {
                 // Update the plugin setting to use the working model
-                update_option('twss_openrouter_model', $available_model);
+                if (function_exists('update_option')) {
+                    update_option('twss_openrouter_model', $available_model);
+                }
 
                 $message = "✅ OpenRouter API key is valid!\n\n";
                 $message .= "📊 Account Information:\n";
@@ -1986,8 +2307,8 @@ class Themewire_Security_AI_Analyzer
                 'max_tokens' => 3
             );
 
-            $site_url = get_site_url();
-            $site_name = get_bloginfo('name');
+            $site_url = function_exists('get_site_url') ? get_site_url() : 'http://localhost';
+            $site_name = function_exists('get_bloginfo') ? get_bloginfo('name') : 'WordPress Site';
 
             $headers = array(
                 'Content-Type: application/json',
@@ -2123,7 +2444,9 @@ class Themewire_Security_AI_Analyzer
 
                 if ($test_result['success']) {
                     // Update plugin setting to use the working model
-                    update_option('twss_groq_model', $best_model);
+                    if (function_exists('update_option')) {
+                        update_option('twss_groq_model', $best_model);
+                    }
 
                     $message = "✅ Groq API key is working perfectly!\n\n";
                     $message .= "🚀 Ultra-Fast AI Analysis Available:\n";
@@ -2403,8 +2726,8 @@ class Themewire_Security_AI_Analyzer
             );
 
             // Get the actual website URL for tracking
-            $site_url = get_site_url();
-            $site_name = get_bloginfo('name');
+            $site_url = function_exists('get_site_url') ? get_site_url() : 'http://localhost';
+            $site_name = function_exists('get_bloginfo') ? get_bloginfo('name') : 'WordPress Site';
 
             $headers = array(
                 'Content-Type: application/json',

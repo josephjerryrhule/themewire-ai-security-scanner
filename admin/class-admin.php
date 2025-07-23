@@ -1,17 +1,17 @@
 <?php
 
 /**
- * The admin-specific functionality of the plugin.
+ * The Security-Hardened Admin functionality of the plugin.
  *
  * @link       https://themewire.com
  * @since      1.0.0
+ * @security   Enhanced with comprehensive input validation, CSRF protection, and capability checks
  *
  * @package    Themewire_Security
  */
 
 class Themewire_Security_Admin
 {
-
     /**
      * The ID of this plugin.
      *
@@ -76,24 +76,216 @@ class Themewire_Security_Admin
     private $ai_analyzer;
 
     /**
-     * Initialize the class and set its properties.
+     * Security nonce action name
+     *
+     * @since    1.0.32
+     * @access   private
+     * @var      string    $nonce_action
+     */
+    private $nonce_action = 'themewire_security_admin_action';
+
+    /**
+     * Initialize the class with enhanced security validation.
      *
      * @since    1.0.0
+     * @security Enhanced constructor with proper WordPress hook timing
      * @param    string    $plugin_name       The name of this plugin.
      * @param    string    $version           The version of this plugin.
      */
     public function __construct($plugin_name, $version)
     {
-        $this->plugin_name = $plugin_name;
-        $this->version = $version;
+        // Security: Validate inputs
+        if (!is_string($plugin_name) || empty(trim($plugin_name))) {
+            throw new InvalidArgumentException('Plugin name must be a non-empty string');
+        }
 
-        $this->scanner = new Themewire_Security_Scanner();
-        $this->database = new Themewire_Security_Database();
-        $this->fixer = new Themewire_Security_Fixer();
-        $this->scheduler = new Themewire_Security_Scheduler();
-        $this->ai_analyzer = new Themewire_Security_AI_Analyzer();
+        if (!is_string($version) || empty(trim($version))) {
+            throw new InvalidArgumentException('Version must be a non-empty string');
+        }
 
-        // AJAX handlers are now registered in the main plugin class
+        // Security: Sanitize inputs if WordPress functions are available
+        if (function_exists('sanitize_text_field')) {
+            $this->plugin_name = sanitize_text_field($plugin_name);
+            $this->version = sanitize_text_field($version);
+        } else {
+            // Fallback sanitization if WordPress not fully loaded
+            $this->plugin_name = preg_replace('/[^a-zA-Z0-9\-_]/', '', $plugin_name);
+            $this->version = preg_replace('/[^0-9\.]/', '', $version);
+        }
+
+        // Initialize components (defer capability checks until WordPress is loaded)
+        $this->initialize_components();
+    }
+
+    /**
+     * Validate user permissions for admin operations.
+     *
+     * @since    1.0.32
+     * @return   bool    True if user has required permissions
+     */
+    public function validate_user_permissions()
+    {
+        // Only check permissions when WordPress is fully loaded
+        if (!function_exists('current_user_can')) {
+            return false;
+        }
+
+        return current_user_can('manage_options');
+    }
+    /**
+     * Initialize plugin components with error handling.
+     *
+     * @since    1.0.32
+     * @security Enhanced with proper error handling and validation
+     */
+    private function initialize_components()
+    {
+        try {
+            $this->scanner = new Themewire_Security_Scanner();
+            $this->database = new Themewire_Security_Database();
+            $this->fixer = new Themewire_Security_Fixer();
+            $this->scheduler = new Themewire_Security_Scheduler();
+            $this->ai_analyzer = new Themewire_Security_AI_Analyzer();
+        } catch (Exception $e) {
+            error_log('TWSS Admin: Component initialization failed - ' . $e->getMessage());
+
+            // Show admin notice for initialization failure
+            add_action('admin_notices', function () use ($e) {
+                $this->show_initialization_error($e->getMessage());
+            });
+        }
+    }
+
+    /**
+     * Show initialization error notice.
+     *
+     * @since    1.0.32
+     * @param    string    $message    Error message
+     */
+    private function show_initialization_error($message)
+    {
+        if (!$this->validate_user_permissions()) {
+            return;
+        }
+
+        echo '<div class="notice notice-error"><p>';
+        if (function_exists('esc_html__')) {
+            echo '<strong>' . esc_html__('ThemeWire Security Error:', 'themewire-security') . '</strong> ';
+            echo esc_html(sprintf(__('Plugin initialization failed: %s', 'themewire-security'), $message));
+        } else {
+            echo '<strong>ThemeWire Security Error:</strong> Plugin initialization failed: ' . esc_html($message);
+        }
+        echo '</p></div>';
+    }
+    /**
+     * Validate admin request with comprehensive security checks.
+     *
+     * @since    1.0.32
+     * @param    string    $action       Action being performed
+     * @param    bool      $check_nonce  Whether to check nonce (default: true)
+     * @return   bool      True if request is valid
+     */
+    private function validate_admin_request($action = '', $check_nonce = true)
+    {
+        // Security: Check user capabilities only if WordPress is loaded
+        if (!$this->validate_user_permissions()) {
+            if (function_exists('wp_die')) {
+                wp_die(__('You do not have sufficient permissions to access this page.', 'themewire-security'));
+            }
+            return false;
+        }
+
+        // Security: Verify nonce if required
+        if ($check_nonce && function_exists('wp_verify_nonce')) {
+            $nonce = '';
+            if (function_exists('sanitize_text_field')) {
+                $nonce = isset($_POST['_wpnonce']) ? sanitize_text_field($_POST['_wpnonce']) : (isset($_GET['_wpnonce']) ? sanitize_text_field($_GET['_wpnonce']) : '');
+            }
+
+            $nonce_action = !empty($action) ? $this->nonce_action . '_' . $action : $this->nonce_action;
+
+            if (!wp_verify_nonce($nonce, $nonce_action)) {
+                if (function_exists('wp_die')) {
+                    wp_die(__('Security check failed. Please try again.', 'themewire-security'));
+                }
+                return false;
+            }
+        }
+
+        // Security: Check request method for state-changing operations
+        if (!empty($action) && !in_array($_SERVER['REQUEST_METHOD'] ?? '', ['POST', 'GET'])) {
+            if (function_exists('wp_die')) {
+                wp_die(__('Invalid request method.', 'themewire-security'));
+            }
+            return false;
+        }
+
+        return true;
+    }
+    /**
+     * Sanitize and validate input data.
+     *
+     * @since    1.0.32
+     * @param    mixed     $data        Data to sanitize
+     * @param    string    $type        Data type (text, email, url, int, array)
+     * @param    array     $options     Additional options
+     * @return   mixed     Sanitized data
+     */
+    private function sanitize_input($data, $type = 'text', $options = array())
+    {
+        if ($data === null) {
+            return null;
+        }
+
+        switch ($type) {
+            case 'text':
+                return function_exists('sanitize_text_field') ? sanitize_text_field($data) : strip_tags($data);
+
+            case 'textarea':
+                return function_exists('sanitize_textarea_field') ? sanitize_textarea_field($data) : strip_tags($data);
+
+            case 'email':
+                if (function_exists('sanitize_email')) {
+                    return sanitize_email($data);
+                }
+                return filter_var($data, FILTER_SANITIZE_EMAIL);
+
+            case 'url':
+                if (function_exists('esc_url_raw')) {
+                    return esc_url_raw($data);
+                }
+                return filter_var($data, FILTER_SANITIZE_URL);
+
+            case 'int':
+                return intval($data);
+
+            case 'float':
+                return floatval($data);
+
+            case 'bool':
+                return (bool) $data;
+
+            case 'array':
+                if (!is_array($data)) {
+                    return array();
+                }
+
+                $sanitized = array();
+                $value_type = isset($options['value_type']) ? $options['value_type'] : 'text';
+
+                foreach ($data as $key => $value) {
+                    $clean_key = function_exists('sanitize_key') ? sanitize_key($key) : preg_replace('/[^a-z0-9_\-]/', '', strtolower($key));
+                    $sanitized[$clean_key] = $this->sanitize_input($value, $value_type, $options);
+                }
+
+                return $sanitized;
+
+            case 'key':
+                return function_exists('sanitize_key') ? sanitize_key($data) : preg_replace('/[^a-z0-9_\-]/', '', strtolower($data));
+
+            default:
+                return function_exists('sanitize_text_field') ? sanitize_text_field($data) : strip_tags($data);
+        }
     }
 
     /**
@@ -103,9 +295,13 @@ class Themewire_Security_Admin
      */
     public function enqueue_styles()
     {
+        if (!function_exists('get_current_screen') || !function_exists('wp_enqueue_style')) {
+            return;
+        }
+
         $screen = get_current_screen();
 
-        if (strpos($screen->id, 'themewire-security') !== false) {
+        if ($screen && strpos($screen->id, 'themewire-security') !== false) {
             wp_enqueue_style($this->plugin_name, TWSS_PLUGIN_URL . 'admin/assets/css/themewire-security-admin.css', array(), $this->version);
         }
     }
@@ -117,35 +313,54 @@ class Themewire_Security_Admin
      */
     public function enqueue_scripts()
     {
+        if (
+            !function_exists('get_current_screen') || !function_exists('wp_enqueue_script') ||
+            !function_exists('wp_localize_script')
+        ) {
+            return;
+        }
+
         $screen = get_current_screen();
 
-        if (strpos($screen->id, 'themewire-security') !== false) {
+        if ($screen && strpos($screen->id, 'themewire-security') !== false) {
             wp_enqueue_script($this->plugin_name, TWSS_PLUGIN_URL . 'admin/assets/js/themewire-security-admin.js', array('jquery'), $this->version, true);
 
             // Enqueue additional JavaScript for new features
             wp_enqueue_script($this->plugin_name . '-additional', TWSS_PLUGIN_URL . 'admin/assets/js/themewire-security-additional.js', array('jquery', $this->plugin_name), $this->version, true);
 
             // Get current scan ID if exists
-            $current_scan_id = get_option('twss_current_scan_id');
+            $current_scan_id = function_exists('get_option') ? get_option('twss_current_scan_id') : '';
 
-            wp_localize_script($this->plugin_name, 'twss_data', array(
-                'ajax_url' => admin_url('admin-ajax.php'),
-                'admin_url' => admin_url(),
-                'nonce' => wp_create_nonce('twss_nonce'),
-                'scan_in_progress' => $this->scanner->is_scan_in_progress(),
+            $ajax_data = array(
+                'nonce' => function_exists('wp_create_nonce') ? wp_create_nonce('twss_nonce') : '',
+                'scan_in_progress' => method_exists($this->scanner, 'is_scan_in_progress') ? $this->scanner->is_scan_in_progress() : false,
                 'has_interrupted_scan' => !empty($current_scan_id),
                 'current_scan_id' => $current_scan_id,
-                'next_scan' => $this->scheduler->get_next_scan_time(),
                 'version' => $this->version,
-                'has_update' => $this->has_update(),
-                'i18n' => array(
-                    'scanning' => __('Scanning...', 'themewire-security'),
-                    'start_scan' => __('Start Scan', 'themewire-security'),
-                    'resume_scan' => __('Resume Scan', 'themewire-security'),
-                    'testing' => __('Testing...', 'themewire-security'),
-                    'test_connection' => __('Test Connection', 'themewire-security')
-                )
-            ));
+                'has_update' => method_exists($this, 'has_update') ? $this->has_update() : false
+            );
+
+            // Add URLs if admin_url function is available
+            if (function_exists('admin_url')) {
+                $ajax_data['ajax_url'] = admin_url('admin-ajax.php');
+                $ajax_data['admin_url'] = admin_url();
+            }
+
+            // Add scheduler info if available
+            if (method_exists($this->scheduler, 'get_next_scan_time')) {
+                $ajax_data['next_scan'] = $this->scheduler->get_next_scan_time();
+            }
+
+            // Add internationalization strings
+            $ajax_data['i18n'] = array(
+                'scanning' => function_exists('__') ? __('Scanning...', 'themewire-security') : 'Scanning...',
+                'start_scan' => function_exists('__') ? __('Start Scan', 'themewire-security') : 'Start Scan',
+                'resume_scan' => function_exists('__') ? __('Resume Scan', 'themewire-security') : 'Resume Scan',
+                'testing' => function_exists('__') ? __('Testing...', 'themewire-security') : 'Testing...',
+                'test_connection' => function_exists('__') ? __('Test Connection', 'themewire-security') : 'Test Connection'
+            );
+
+            wp_localize_script($this->plugin_name, 'twss_data', $ajax_data);
         }
     }
 
@@ -187,6 +402,16 @@ class Themewire_Security_Admin
         }
 
         $api_key = isset($_POST['api_key']) ? sanitize_text_field($_POST['api_key']) : '';
+        $use_saved_key = isset($_POST['use_saved_key']) && $_POST['use_saved_key'] === 'true';
+
+        // If using saved key flag, get the stored API key
+        if ($use_saved_key || $api_key === 'USE_SAVED_KEY') {
+            $api_key = get_option('twss_openai_api_key', '');
+            if (empty($api_key)) {
+                wp_send_json_error(__('No saved API key found. Please enter your API key first.', 'themewire-security'));
+                return;
+            }
+        }
 
         if (empty($api_key)) {
             wp_send_json_error(__('API key cannot be empty', 'themewire-security'));
@@ -215,6 +440,16 @@ class Themewire_Security_Admin
         }
 
         $api_key = isset($_POST['api_key']) ? sanitize_text_field($_POST['api_key']) : '';
+        $use_saved_key = isset($_POST['use_saved_key']) && $_POST['use_saved_key'] === 'true';
+
+        // If using saved key flag, get the stored API key
+        if ($use_saved_key || $api_key === 'USE_SAVED_KEY') {
+            $api_key = get_option('twss_gemini_api_key', '');
+            if (empty($api_key)) {
+                wp_send_json_error(__('No saved API key found. Please enter your API key first.', 'themewire-security'));
+                return;
+            }
+        }
 
         if (empty($api_key)) {
             wp_send_json_error(__('API key cannot be empty', 'themewire-security'));
@@ -243,6 +478,16 @@ class Themewire_Security_Admin
         }
 
         $api_key = isset($_POST['api_key']) ? sanitize_text_field($_POST['api_key']) : '';
+        $use_saved_key = isset($_POST['use_saved_key']) && $_POST['use_saved_key'] === 'true';
+
+        // If using saved key flag, get the stored API key
+        if ($use_saved_key || $api_key === 'USE_SAVED_KEY') {
+            $api_key = get_option('twss_openrouter_api_key', '');
+            if (empty($api_key)) {
+                wp_send_json_error(__('No saved API key found. Please enter your API key first.', 'themewire-security'));
+                return;
+            }
+        }
 
         if (empty($api_key)) {
             wp_send_json_error(__('API key cannot be empty', 'themewire-security'));
@@ -271,7 +516,17 @@ class Themewire_Security_Admin
             return;
         }
 
-        $api_key = sanitize_text_field($_POST['api_key']);
+        $api_key = isset($_POST['api_key']) ? sanitize_text_field($_POST['api_key']) : '';
+        $use_saved_key = isset($_POST['use_saved_key']) && $_POST['use_saved_key'] === 'true';
+
+        // If using saved key flag, get the stored API key
+        if ($use_saved_key || $api_key === 'USE_SAVED_KEY') {
+            $api_key = get_option('twss_groq_api_key', '');
+            if (empty($api_key)) {
+                wp_send_json_error(__('No saved API key found. Please enter your API key first.', 'themewire-security'));
+                return;
+            }
+        }
 
         if (empty($api_key)) {
             wp_send_json_error(__('API key is required', 'themewire-security'));
@@ -584,6 +839,23 @@ class Themewire_Security_Admin
 
         // Get comprehensive scan status from scanner
         $status = $this->scanner->get_scan_status();
+
+        // Additional cleanup: If no active scan found but scan_in_progress transient exists, clear it
+        if (!$status['success'] && strpos($status['message'], 'No active scan found') !== false) {
+            $scan_in_progress_transient = get_transient('twss_scan_in_progress');
+            if ($scan_in_progress_transient === 'yes') {
+                // Clear stale scan progress flag
+                delete_transient('twss_scan_in_progress');
+                delete_transient('twss_scan_last_activity');
+                delete_transient('twss_optimized_scan_state');
+                delete_transient('twss_chunked_scan_state');
+
+                // Add info to debug data
+                if (isset($status['debug'])) {
+                    $status['debug']['cleaned_stale_transients'] = true;
+                }
+            }
+        }
 
         if ($status['success']) {
             wp_send_json_success($status);
