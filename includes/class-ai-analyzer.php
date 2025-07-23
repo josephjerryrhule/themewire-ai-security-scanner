@@ -1113,22 +1113,24 @@ class Themewire_Security_AI_Analyzer
     {
         $hash = md5($message);
         $now = time();
-        
+
         // Check if we've logged this error recently
-        if (isset(self::$error_log_cache[$hash]) && 
-            (self::$error_log_cache[$hash] + $timeout) > $now) {
+        if (
+            isset(self::$error_log_cache[$hash]) &&
+            (self::$error_log_cache[$hash] + $timeout) > $now
+        ) {
             return false; // Rate limited
         }
-        
+
         // Log the error and update cache
         error_log($message);
         self::$error_log_cache[$hash] = $now;
-        
+
         // Clean up old cache entries periodically
         if (count(self::$error_log_cache) > 50) {
             $this->cleanup_error_log_cache($timeout);
         }
-        
+
         return true;
     }
 
@@ -1182,7 +1184,7 @@ class Themewire_Security_AI_Analyzer
         );
 
         $data = array(
-            'model' => get_option('twss_openrouter_model', 'deepseek/deepseek-chat-v3-0324:free'), // Updated to working model
+            'model' => get_option('twss_openrouter_model', 'qwen/qwen3-235b-a22b-07-25:free'), // Updated to working model
             'messages' => array(
                 array(
                     'role' => 'system',
@@ -1231,7 +1233,7 @@ class Themewire_Security_AI_Analyzer
                     $this->rate_limited_error_log("OpenRouter Model Not Available: {$error_message} - Trying fallback model");
 
                     // Try with a reliable fallback model
-                    $fallback_models = ['deepseek/deepseek-chat-v3-0324:free', 'openai/gpt-3.5-turbo', 'microsoft/wizardlm-2-8x22b:free', 'google/gemma-2-9b-it:free'];
+                    $fallback_models = ['qwen/qwen3-235b-a22b-07-25:free', 'moonshotai/kimi-k2:free', 'microsoft/wizardlm-2-8x22b:free', 'google/gemma-2-9b-it:free'];
                     $current_model = get_option('twss_openrouter_model', 'openai/gpt-3.5-turbo');
 
                     foreach ($fallback_models as $fallback_model) {
@@ -1812,22 +1814,34 @@ class Themewire_Security_AI_Analyzer
     public function get_openrouter_models()
     {
         return array(
-            // Free models (verified working)
-            'deepseek/deepseek-chat-v3-0324:free' => array(
-                'name' => 'DeepSeek Chat V3 (Free)',
-                'description' => 'Advanced reasoning model for security analysis',
+            // Free models (verified working from OpenRouter API)
+            'qwen/qwen3-235b-a22b-07-25:free' => array(
+                'name' => 'Qwen 3 235B A22B (Free)',
+                'description' => 'Alibaba\'s powerful multilingual model with 262K context',
                 'cost' => 'Free',
-                'context' => '64k tokens'
+                'context' => '262k tokens'
             ),
             'google/gemma-3n-e2b-it:free' => array(
-                'name' => 'Gemma 3N E2B IT (Free)',
-                'description' => 'Google\'s latest Gemma model, excellent for code analysis',
+                'name' => 'Gemma 3N 2B IT (Free)',
+                'description' => 'Google\'s efficient multimodal model',
                 'cost' => 'Free',
                 'context' => '8k tokens'
             ),
-            'qwen/qwen3-235b-a22b-07-25:free' => array(
-                'name' => 'Qwen 3 235B (Free)',
-                'description' => 'Alibaba\'s powerful model for comprehensive analysis',
+            'moonshotai/kimi-k2:free' => array(
+                'name' => 'Kimi K2 (Free)',
+                'description' => 'MoE model optimized for agentic capabilities and tool use',
+                'cost' => 'Free',
+                'context' => '65k tokens'
+            ),
+            'tencent/hunyuan-a13b-instruct:free' => array(
+                'name' => 'Hunyuan A13B Instruct (Free)',
+                'description' => 'Tencent\'s MoE model with reasoning capabilities',
+                'cost' => 'Free',
+                'context' => '32k tokens'
+            ),
+            'cognitivecomputations/dolphin-mistral-24b-venice-edition:free' => array(
+                'name' => 'Venice Uncensored (Free)',
+                'description' => 'Uncensored fine-tuned Mistral model for flexible analysis',
                 'cost' => 'Free',
                 'context' => '32k tokens'
             ),
@@ -1839,7 +1853,7 @@ class Themewire_Security_AI_Analyzer
             ),
             'google/gemma-2-9b-it:free' => array(
                 'name' => 'Gemma 2 9B IT (Free)',
-                'description' => 'Google\'s open model, reliable performance',
+                'description' => 'Google\'s reliable open model for code analysis',
                 'cost' => 'Free',
                 'context' => '8k tokens'
             ),
