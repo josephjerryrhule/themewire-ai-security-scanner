@@ -89,7 +89,7 @@ function is_wordpress_core_file($file_path)
 <div class="wrap themewire-security-wrap">
     <div style="margin-bottom: 20px;">
         <h1><?php _e('Security Issues', 'themewire-security'); ?></h1>
-        <?php if (!empty($issues)): ?>
+        <?php if (!empty($all_issues)): ?>
             <div>
                 <button id="clear-all-issues-button" class="button button-secondary" style="background-color: #dc3232; border-color: #dc3232; color: white; margin-right: 10px;">
                     <?php _e('Clear All Issues', 'themewire-security'); ?>
@@ -108,7 +108,7 @@ function is_wordpress_core_file($file_path)
             <p><?php _e('No security scans have been run yet.', 'themewire-security'); ?></p>
         </div>
         <p><a href="<?php echo admin_url('admin.php?page=themewire-security-scan'); ?>" class="button button-primary"><?php _e('Run First Scan', 'themewire-security'); ?></a></p>
-    <?php elseif (empty($issues)): ?>
+    <?php elseif (empty($all_issues)): ?>
         <div class="notice notice-success">
             <p><?php _e('No security issues were found in your WordPress site.', 'themewire-security'); ?></p>
         </div>
@@ -166,7 +166,7 @@ function is_wordpress_core_file($file_path)
                 </form>
             </div>
 
-            <?php if (empty($issues)): ?>
+            <?php if (empty($all_issues)): ?>
                 <div class="notice notice-info" style="margin: 20px 0;">
                     <p><?php _e('No issues match the current filters.', 'themewire-security'); ?></p>
                 </div>
