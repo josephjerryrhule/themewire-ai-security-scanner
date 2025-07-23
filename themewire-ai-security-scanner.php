@@ -105,3 +105,8 @@ function run_themewire_security_scanner()
 }
 
 run_themewire_security_scanner();
+
+// Debug functionality - remove in production
+if (defined('WP_DEBUG') && WP_DEBUG) {
+    require_once TWSS_PLUGIN_DIR . 'debug-admin-test.php';
+}
