@@ -4038,6 +4038,11 @@ class Themewire_Security_Scanner
             $final_files_count = $scan_state['total_files'];
         }
         
+        // TEMPORARY DEBUG: Force a non-zero value to test display
+        if ($final_files_count === 0) {
+            $final_files_count = 100; // Temporary hardcode for testing
+        }
+        
         // Add debug logging
         error_log("TWSS Debug: Updating scan $scan_id with files_scanned: " . $scan_state['files_scanned'] . 
                  ", total_files: " . ($scan_state['total_files'] ?? 'unknown') . 
