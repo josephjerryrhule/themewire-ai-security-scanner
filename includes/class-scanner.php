@@ -233,6 +233,7 @@ class Themewire_Security_Scanner
             if ($last_activity && (time() - $last_activity) > 3600) {
                 // Reset stuck scan
                 $this->reset_scan_state();
+                delete_option('twss_current_scan_id'); // Clear stuck scan ID
                 if ($this->logger) {
                     $this->logger->warning('Detected stuck scan, resetting scan status');
                 }
@@ -243,6 +244,9 @@ class Themewire_Security_Scanner
                 );
             }
         }
+
+        // Clear any existing scan ID when starting fresh scan
+        delete_option('twss_current_scan_id');
 
         if ($this->logger) {
             $this->logger->info('Starting optimized progressive security scan');
@@ -1070,6 +1074,7 @@ class Themewire_Security_Scanner
                 // Old stuck scan, reset it
                 delete_transient('twss_scan_in_progress');
                 delete_transient('twss_scan_last_activity');
+                delete_option('twss_current_scan_id'); // Clear stuck scan ID
                 if ($this->logger) {
                     $this->logger->warning('Detected stuck scan, resetting scan status');
                 }
@@ -1080,6 +1085,9 @@ class Themewire_Security_Scanner
                 );
             }
         }
+
+        // Clear any existing scan ID when starting fresh scan
+        delete_option('twss_current_scan_id');
 
         if ($this->logger) {
             $this->logger->info('Starting new security scan');
@@ -1265,6 +1273,7 @@ class Themewire_Security_Scanner
                 delete_transient('twss_scan_in_progress');
                 delete_transient('twss_scan_last_activity');
                 delete_transient('twss_chunked_scan_state');
+                delete_option('twss_current_scan_id'); // Clear stuck scan ID
                 if ($this->logger) {
                     $this->logger->warning('Detected stuck scan, resetting scan status');
                 }
@@ -1275,6 +1284,9 @@ class Themewire_Security_Scanner
                 );
             }
         }
+
+        // Clear any existing scan ID when starting fresh scan
+        delete_option('twss_current_scan_id');
 
         if ($this->logger) {
             $this->logger->info('Starting new chunked security scan');
@@ -3737,8 +3749,9 @@ class Themewire_Security_Scanner
         $this->database->update_scan_status($scan_id, 'completed');
         $this->set_scan_in_progress(false);
 
-        // Clean up transients
+        // Clean up transients and options
         delete_transient('twss_optimized_scan_state');
+        delete_option('twss_current_scan_id');
 
         // Get scan summary
         $summary = $this->database->get_scan_summary($scan_id);

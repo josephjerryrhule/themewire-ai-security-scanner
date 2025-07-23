@@ -3,7 +3,7 @@
 /**
  * Admin Scan View.
  *
- * @link       https://themewire.com
+ * @link       https://themewire.co
  * @since      1.0.0
  *
  * @package    Themewire_Security
@@ -34,7 +34,24 @@ $scan = $wpdb->get_row("SELECT * FROM {$wpdb->prefix}twss_scans ORDER BY scan_da
 
         <p><?php _e('This scan may take several minutes depending on the size of your site.', 'themewire-security'); ?></p>
 
-        <?php if (get_option('twss_current_scan_id')): ?>
+<?php 
+// Check for incomplete scan more thoroughly
+$current_scan_id = get_option('twss_current_scan_id');
+$has_incomplete_scan = false;
+
+if ($current_scan_id) {
+    // Check if the scan actually exists and is not completed
+    $scan_status = $wpdb->get_var($wpdb->prepare("SELECT status FROM {$wpdb->prefix}twss_scans WHERE id = %d", $current_scan_id));
+    $has_incomplete_scan = ($scan_status && !in_array($scan_status, array('completed', 'failed')));
+    
+    // Clean up if scan is actually completed but option wasn't cleared
+    if (!$has_incomplete_scan) {
+        delete_option('twss_current_scan_id');
+        $current_scan_id = null;
+    }
+}
+?>
+<?php if ($has_incomplete_scan): ?>
             <div class="notice notice-warning">
                 <p><?php _e('A previous scan was interrupted. You can resume it or start a new scan.', 'themewire-security'); ?></p>
             </div>

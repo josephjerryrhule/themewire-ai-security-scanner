@@ -1182,7 +1182,7 @@ class Themewire_Security_AI_Analyzer
         );
 
         $data = array(
-            'model' => get_option('twss_openrouter_model', 'openai/gpt-3.5-turbo'), // Updated to working model
+            'model' => get_option('twss_openrouter_model', 'deepseek/deepseek-chat-v3-0324:free'), // Updated to working model
             'messages' => array(
                 array(
                     'role' => 'system',
@@ -1231,7 +1231,7 @@ class Themewire_Security_AI_Analyzer
                     $this->rate_limited_error_log("OpenRouter Model Not Available: {$error_message} - Trying fallback model");
 
                     // Try with a reliable fallback model
-                    $fallback_models = ['openai/gpt-3.5-turbo', 'microsoft/wizardlm-2-8x22b:free', 'google/gemma-2-9b-it:free'];
+                    $fallback_models = ['deepseek/deepseek-chat-v3-0324:free', 'openai/gpt-3.5-turbo', 'microsoft/wizardlm-2-8x22b:free', 'google/gemma-2-9b-it:free'];
                     $current_model = get_option('twss_openrouter_model', 'openai/gpt-3.5-turbo');
 
                     foreach ($fallback_models as $fallback_model) {
@@ -1813,6 +1813,24 @@ class Themewire_Security_AI_Analyzer
     {
         return array(
             // Free models (verified working)
+            'deepseek/deepseek-chat-v3-0324:free' => array(
+                'name' => 'DeepSeek Chat V3 (Free)',
+                'description' => 'Advanced reasoning model for security analysis',
+                'cost' => 'Free',
+                'context' => '64k tokens'
+            ),
+            'google/gemma-3n-e2b-it:free' => array(
+                'name' => 'Gemma 3N E2B IT (Free)',
+                'description' => 'Google\'s latest Gemma model, excellent for code analysis',
+                'cost' => 'Free',
+                'context' => '8k tokens'
+            ),
+            'qwen/qwen3-235b-a22b-07-25:free' => array(
+                'name' => 'Qwen 3 235B (Free)',
+                'description' => 'Alibaba\'s powerful model for comprehensive analysis',
+                'cost' => 'Free',
+                'context' => '32k tokens'
+            ),
             'microsoft/wizardlm-2-8x22b:free' => array(
                 'name' => 'WizardLM-2 8x22B (Free)',
                 'description' => 'High-quality reasoning model for security analysis',
