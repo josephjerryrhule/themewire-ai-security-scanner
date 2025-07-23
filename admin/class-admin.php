@@ -774,6 +774,15 @@ class Themewire_Security_Admin
      */
     public function display_issues_page()
     {
+        // Get the most recent scan for display purposes
+        try {
+            $database = new Themewire_Security_Database();
+            $recent_scans = $database->get_recent_scans(1);
+            $scan = !empty($recent_scans) ? $recent_scans[0] : null;
+        } catch (Exception $e) {
+            $scan = null;
+        }
+
         require_once TWSS_PLUGIN_DIR . 'admin/views/issues.php';
     }
 

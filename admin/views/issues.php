@@ -103,20 +103,12 @@ function is_wordpress_core_file($file_path)
         <?php endif; ?>
     </div>
 
-    <?php if (empty($scan)): ?>
-        <div class="notice notice-warning">
-            <p><?php _e('No security scans have been run yet.', 'themewire-security'); ?></p>
-        </div>
-        <p><a href="<?php echo admin_url('admin.php?page=themewire-security-scan'); ?>" class="button button-primary"><?php _e('Run First Scan', 'themewire-security'); ?></a></p>
-    <?php elseif (empty($all_issues)): ?>
-        <div class="notice notice-success">
-            <p><?php _e('No security issues were found in your WordPress site.', 'themewire-security'); ?></p>
-        </div>
-        <p><a href="<?php echo admin_url('admin.php?page=themewire-security-scan'); ?>" class="button button-primary"><?php _e('Run New Scan', 'themewire-security'); ?></a></p>
-    <?php else: ?>
+    <?php if (!empty($all_issues)): ?>
         <div class="card">
             <h2 class="card-title"><?php _e('Detected Security Issues', 'themewire-security'); ?></h2>
-            <p><?php printf(__('Scan completed on: %s', 'themewire-security'), date('F j, Y, g:i a', strtotime($scan['scan_date']))); ?></p>
+            <?php if (isset($scan) && $scan && !empty($scan['scan_date'])): ?>
+                <p><?php printf(__('Scan completed on: %s', 'themewire-security'), date('F j, Y, g:i a', strtotime($scan['scan_date']))); ?></p>
+            <?php endif; ?>
 
             <!-- Filters Section -->
             <div class="filters-section" style="margin: 20px 0; padding: 15px; background: #FBF6F0; border: 1px solid #FF7342; border-radius: 6px;">
@@ -394,6 +386,20 @@ function is_wordpress_core_file($file_path)
                 <?php endif; ?>
 
         </div>
+    <?php endif; ?>
+
+    <?php if (empty($all_issues)): ?>
+        <?php if (empty($scan)): ?>
+            <div class="notice notice-warning">
+                <p><?php _e('No security scans have been run yet.', 'themewire-security'); ?></p>
+            </div>
+            <p><a href="<?php echo admin_url('admin.php?page=themewire-security-scan'); ?>" class="button button-primary"><?php _e('Run First Scan', 'themewire-security'); ?></a></p>
+        <?php else: ?>
+            <div class="notice notice-success">
+                <p><?php _e('No security issues were found in your WordPress site.', 'themewire-security'); ?></p>
+            </div>
+            <p><a href="<?php echo admin_url('admin.php?page=themewire-security-scan'); ?>" class="button button-primary"><?php _e('Run New Scan', 'themewire-security'); ?></a></p>
+        <?php endif; ?>
     <?php endif; ?>
 
     <div id="analysis-modal" class="modal">
