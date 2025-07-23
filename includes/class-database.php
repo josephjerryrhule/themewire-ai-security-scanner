@@ -90,11 +90,33 @@ class Themewire_Security_Database
             UNIQUE KEY file_path (file_path)
         ) $charset_collate;";
 
+        // Scan results table for comprehensive file analysis
+        $table_scan_results = $wpdb->prefix . 'twss_scan_results';
+        $sql_scan_results = "CREATE TABLE $table_scan_results (
+            id int(11) NOT NULL AUTO_INCREMENT,
+            scan_id int(11) NOT NULL,
+            file_path varchar(512) NOT NULL,
+            file_size int(11) NOT NULL DEFAULT 0,
+            file_hash varchar(64),
+            file_content longtext,
+            pattern_matches text,
+            ai_analyzed tinyint(1) NOT NULL DEFAULT 0,
+            ai_risk_score int(3) NOT NULL DEFAULT 0,
+            ai_threats text,
+            scan_stage varchar(50) NOT NULL,
+            timestamp datetime NOT NULL,
+            PRIMARY KEY  (id),
+            KEY scan_id (scan_id),
+            KEY file_path (file_path),
+            KEY ai_analyzed (ai_analyzed)
+        ) $charset_collate;";
+
         require_once(ABSPATH . 'wp-admin/includes/upgrade.php');
         dbDelta($sql_scans);
         dbDelta($sql_issues);
         dbDelta($sql_progress);
         dbDelta($sql_whitelist);
+        dbDelta($sql_scan_results);
     }
 
     /**
@@ -793,5 +815,141 @@ class Themewire_Security_Database
         }
 
         return $ghost_count;
+    }
+
+    /**
+     * Store comprehensive scan result for a file
+     *
+     * @since    1.0.29
+     * @param    int       $scan_id           The scan ID
+     * @param    string    $file_path         File path
+     * @param    string    $file_content      File content for AI analysis
+     * @param    array     $pattern_matches   Pattern matches found
+     * @param    string    $scan_stage        Current scan stage
+     * @return   int       Result record ID
+     */
+    public function store_scan_result($scan_id, $file_path, $file_content, $pattern_matches = array(), $scan_stage = 'unknown')
+    {
+        global $wpdb;
+
+        $file_hash = hash('sha256', $file_content);
+
+        $wpdb->insert(
+            $wpdb->prefix . 'twss_scan_results',
+            array(
+                'scan_id' => $scan_id,
+                'file_path' => $file_path,
+                'file_size' => strlen($file_content),
+                'file_hash' => $file_hash,
+                'file_content' => $file_content,
+                'pattern_matches' => json_encode($pattern_matches),
+                'ai_analyzed' => 0,
+                'ai_risk_score' => 0,
+                'ai_threats' => '[]',
+                'scan_stage' => $scan_stage,
+                'timestamp' => current_time('mysql')
+            )
+        );
+
+        return $wpdb->insert_id;
+    }
+
+    /**
+     * Get files pending AI analysis for a scan
+     *
+     * @since    1.0.29
+     * @param    int    $scan_id    The scan ID
+     * @param    int    $limit      Limit number of results
+     * @param    int    $offset     Offset for pagination
+     * @return   array  Files pending AI analysis
+     */
+    public function get_files_pending_ai_analysis($scan_id, $limit = 10, $offset = 0)
+    {
+        global $wpdb;
+
+        return $wpdb->get_results($wpdb->prepare(
+            "SELECT id, file_path, file_content, pattern_matches FROM {$wpdb->prefix}twss_scan_results 
+             WHERE scan_id = %d AND ai_analyzed = 0 
+             ORDER BY id ASC LIMIT %d OFFSET %d",
+            $scan_id,
+            $limit,
+            $offset
+        ));
+    }
+
+    /**
+     * Update AI analysis results for a file
+     *
+     * @since    1.0.29
+     * @param    int       $scan_id           The scan ID
+     * @param    string    $file_path         File path
+     * @param    int       $risk_score        AI risk score (0-100)
+     * @param    array     $threats           Detected threats
+     * @return   bool      Success status
+     */
+    public function update_ai_analysis_result($scan_id, $file_path, $risk_score = 0, $threats = array())
+    {
+        global $wpdb;
+
+        return $wpdb->update(
+            $wpdb->prefix . 'twss_scan_results',
+            array(
+                'ai_analyzed' => 1,
+                'ai_risk_score' => $risk_score,
+                'ai_threats' => json_encode($threats)
+            ),
+            array(
+                'scan_id' => $scan_id,
+                'file_path' => $file_path
+            ),
+            array('%d', '%d', '%s'),
+            array('%d', '%s')
+        );
+    }
+
+    /**
+     * Get comprehensive scan statistics including AI analysis
+     *
+     * @since    1.0.29
+     * @param    int    $scan_id    The scan ID
+     * @return   array  Comprehensive scan statistics
+     */
+    public function get_comprehensive_scan_stats($scan_id)
+    {
+        global $wpdb;
+
+        $stats = array();
+
+        // Total files scanned
+        $stats['total_files'] = $wpdb->get_var($wpdb->prepare(
+            "SELECT COUNT(*) FROM {$wpdb->prefix}twss_scan_results WHERE scan_id = %d",
+            $scan_id
+        ));
+
+        // Files analyzed by AI
+        $stats['ai_analyzed_files'] = $wpdb->get_var($wpdb->prepare(
+            "SELECT COUNT(*) FROM {$wpdb->prefix}twss_scan_results WHERE scan_id = %d AND ai_analyzed = 1",
+            $scan_id
+        ));
+
+        // High risk files (AI score > 70)
+        $stats['high_risk_files'] = $wpdb->get_var($wpdb->prepare(
+            "SELECT COUNT(*) FROM {$wpdb->prefix}twss_scan_results WHERE scan_id = %d AND ai_risk_score > 70",
+            $scan_id
+        ));
+
+        // Files by scan stage
+        $stage_stats = $wpdb->get_results($wpdb->prepare(
+            "SELECT scan_stage, COUNT(*) as count FROM {$wpdb->prefix}twss_scan_results 
+             WHERE scan_id = %d GROUP BY scan_stage",
+            $scan_id
+        ), ARRAY_A);
+
+        $stats['files_by_stage'] = array();
+        foreach ($stage_stats as $stage) {
+            $stats['files_by_stage'][$stage['scan_stage']] = $stage['count'];
+        }
+
+        return $stats;
     }
 }

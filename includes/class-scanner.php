@@ -560,25 +560,34 @@ class Themewire_Security_Scanner
         $inventory['stage_totals']['critical_files'] = count($critical_files);
         $inventory['total_files'] += count($critical_files);
 
-        // 2. Core files (sample only for speed)
-        $core_files = $this->find_sample_core_files();
+        // 2. ALL Core files (comprehensive scan, not just samples)
+        $core_files = $this->find_all_core_files();
         $inventory['stage_totals']['core_files'] = count($core_files);
         $inventory['total_files'] += count($core_files);
 
-        // 3. Active plugins
-        $plugin_files = $this->find_active_plugin_files();
+        // 3. ALL plugins (active AND inactive for security)
+        $plugin_files = $this->find_all_plugin_files();
         $inventory['stage_totals']['plugins'] = count($plugin_files);
         $inventory['total_files'] += count($plugin_files);
 
-        // 4. Active themes
-        $theme_files = $this->find_active_theme_files();
+        // 4. ALL themes (active AND inactive for security)
+        $theme_files = $this->find_all_theme_files();
         $inventory['stage_totals']['themes'] = count($theme_files);
         $inventory['total_files'] += count($theme_files);
 
-        // 5. Uploads directory (PHP files only)
-        $upload_files = $this->find_suspicious_uploads();
+        // 5. All uploads directory files (comprehensive security scan)
+        $upload_files = $this->find_all_upload_files();
         $inventory['stage_totals']['uploads'] = count($upload_files);
         $inventory['total_files'] += count($upload_files);
+
+        $this->logger->info('Comprehensive scan inventory calculated', array(
+            'total_files' => $inventory['total_files'],
+            'critical_files' => $inventory['stage_totals']['critical_files'],
+            'core_files' => $inventory['stage_totals']['core_files'],
+            'plugins' => $inventory['stage_totals']['plugins'],
+            'themes' => $inventory['stage_totals']['themes'],
+            'uploads' => $inventory['stage_totals']['uploads']
+        ));
 
         return $inventory;
     }
@@ -1140,6 +1149,15 @@ class Themewire_Security_Scanner
     private function scan_single_file($scan_id, $file_path, $reason)
     {
         try {
+            // Read file content for comprehensive analysis
+            $file_content = '';
+            if (is_readable($file_path) && filesize($file_path) < 10 * 1024 * 1024) { // Limit to 10MB files
+                $file_content = file_get_contents($file_path);
+            }
+
+            // Store comprehensive scan result in database
+            $this->database->store_scan_result($scan_id, $file_path, $file_content, array(), $reason);
+
             // Perform the actual file analysis
             $analysis_result = $this->ai_analyzer->analyze_file($file_path);
 
@@ -1178,6 +1196,23 @@ class Themewire_Security_Scanner
             return true;
         } catch (Exception $e) {
             $error_message = $e->getMessage();
+
+            // Still store the file for analysis even if initial scan fails
+            if (!empty($file_path) && is_readable($file_path)) {
+                try {
+                    $file_content = '';
+                    if (filesize($file_path) < 10 * 1024 * 1024) { // Limit to 10MB files
+                        $file_content = file_get_contents($file_path);
+                    }
+                    $this->database->store_scan_result($scan_id, $file_path, $file_content, array(), $reason);
+                } catch (Exception $storage_error) {
+                    if ($this->logger) {
+                        $this->logger->error('Failed to store scan result: ' . $file_path, array(
+                            'error' => $storage_error->getMessage()
+                        ));
+                    }
+                }
+            }
 
             // Handle AI service quota/rate limiting gracefully
             if (
@@ -3533,17 +3568,80 @@ class Themewire_Security_Scanner
      */
     private function process_ai_analysis_chunk($scan_id, $scan_state)
     {
-        // For now, skip AI analysis to complete scan faster
-        // Mark AI analysis as completed in the scan state
-        $scan_state['ai_analysis_complete'] = true;
-        $scan_state['stage'] = 'completed';
-        $scan_state['completed'] = true;
+        $batch_size = 10; // Analyze 10 files per batch to avoid timeouts
+        $offset = isset($scan_state['ai_offset']) ? $scan_state['ai_offset'] : 0;
 
-        // Update the optimized scan state
+        // Get files that need AI analysis using the new database method
+        $pending_files = $this->database->get_files_pending_ai_analysis($scan_id, $batch_size, $offset);
+
+        $processed = 0;
+        $total_pending = count($pending_files); // This will be corrected below
+
+        if (empty($pending_files)) {
+            // AI analysis complete
+            $scan_state['ai_analysis_complete'] = true;
+            $scan_state['stage'] = 'completed';
+            $scan_state['completed'] = true;
+
+            $this->logger->info('AI analysis completed for all files', array('scan_id' => $scan_id));
+
+            // Update the optimized scan state
+            set_transient('twss_optimized_scan_state', $scan_state, DAY_IN_SECONDS);
+
+            // Finalize the scan
+            return $this->finalize_optimized_scan($scan_state);
+        }
+
+        // Process files through AI analysis
+        foreach ($pending_files as $file_data) {
+            try {
+                $ai_result = $this->ai_analyzer->analyze_file($file_data->file_path);
+
+                // Extract AI analysis results
+                $risk_score = 0;
+                $threats = array();
+
+                if ($ai_result && isset($ai_result['is_malware']) && $ai_result['is_malware']) {
+                    $risk_score = isset($ai_result['confidence']) ? $ai_result['confidence'] : 75;
+                    $threats = isset($ai_result['indicators']) ? $ai_result['indicators'] : array('malware_detected');
+                }
+
+                // Update scan results with AI analysis using new database method
+                $this->database->update_ai_analysis_result($scan_id, $file_data->file_path, $risk_score, $threats);
+
+                $processed++;
+            } catch (Exception $e) {
+                $this->logger->error('AI analysis failed for file: ' . $file_data->file_path, array(
+                    'error' => $e->getMessage(),
+                    'scan_id' => $scan_id
+                ));
+
+                // Mark as analyzed to avoid infinite loop
+                $this->database->update_ai_analysis_result($scan_id, $file_data->file_path, 0, array());
+            }
+        }
+
+        // Update progress
+        $scan_state['ai_offset'] = $offset + $batch_size;
+        $progress_percentage = $batch_size > 0 ? (($offset + $processed) / ($offset + $batch_size)) * 100 : 100;
+        $scan_state['progress'] = min(95 + ($progress_percentage * 0.05), 99); // 95-99% range for AI analysis
+
         set_transient('twss_optimized_scan_state', $scan_state, DAY_IN_SECONDS);
 
-        // Finalize the scan
-        return $this->finalize_optimized_scan($scan_state);
+        $this->logger->info('AI analysis batch completed', array(
+            'scan_id' => $scan_id,
+            'processed' => $processed,
+            'offset' => $offset,
+            'progress' => $scan_state['progress']
+        ));
+
+        return array(
+            'success' => true,
+            'continue' => true,
+            'stage' => 'ai_analysis',
+            'progress' => $scan_state['progress'],
+            'message' => sprintf(__('AI analyzing files... %d%% complete', 'themewire-security'), round($scan_state['progress']))
+        );
     }
 
     // =======================
@@ -3606,7 +3704,13 @@ class Themewire_Security_Scanner
      * @since    1.0.29
      * @return   array    Array of core file paths
      */
-    private function find_sample_core_files()
+    /**
+     * Find ALL WordPress core files for comprehensive security scanning
+     *
+     * @since    1.0.29
+     * @return   array    Array of ALL core file paths
+     */
+    private function find_all_core_files()
     {
         $core_files = array();
         $wp_root = ABSPATH;
@@ -3617,7 +3721,16 @@ class Themewire_Security_Scanner
             'wp-load.php',
             'wp-blog-header.php',
             'index.php',
-            '.htaccess'
+            '.htaccess',
+            'wp-cron.php',
+            'wp-login.php',
+            'wp-settings.php',
+            'wp-mail.php',
+            'wp-activate.php',
+            'wp-signup.php',
+            'wp-trackback.php',
+            'wp-comments-post.php',
+            'wp-links-opml.php'
         );
 
         foreach ($key_files as $file) {
@@ -3627,18 +3740,21 @@ class Themewire_Security_Scanner
             }
         }
 
-        // Sample from wp-includes and wp-admin (not all files)
-        $includes_files = glob($wp_root . 'wp-includes/*.php');
+        // ALL wp-includes files (comprehensive scan)
+        $includes_files = $this->find_files_by_extension($wp_root . 'wp-includes', $this->priority_extensions, 0);
         if ($includes_files) {
-            $core_files = array_merge($core_files, array_slice($includes_files, 0, 20)); // First 20 files
+            $core_files = array_merge($core_files, $includes_files);
         }
 
-        $admin_files = glob($wp_root . 'wp-admin/*.php');
+        // ALL wp-admin files (comprehensive scan)
+        $admin_files = $this->find_files_by_extension($wp_root . 'wp-admin', $this->priority_extensions, 0);
         if ($admin_files) {
-            $core_files = array_merge($core_files, array_slice($admin_files, 0, 15)); // First 15 files
+            $core_files = array_merge($core_files, $admin_files);
         }
 
-        return $core_files;
+        $this->logger->info('Found WordPress core files for comprehensive scan', array('count' => count($core_files)));
+
+        return array_unique($core_files);
     }
 
     /**
@@ -3647,7 +3763,13 @@ class Themewire_Security_Scanner
      * @since    1.0.29
      * @return   array    Array of active plugin file paths
      */
-    private function find_active_plugin_files()
+    /**
+     * Find ALL plugin files (active AND inactive) for comprehensive security scanning
+     *
+     * @since    1.0.29
+     * @return   array    Array of ALL plugin file paths
+     */
+    private function find_all_plugin_files()
     {
         $plugin_files = array();
         $plugin_dir = WP_PLUGIN_DIR;
@@ -3656,28 +3778,28 @@ class Themewire_Security_Scanner
             return array();
         }
 
-        // Get only active plugins
+        // Get ALL plugins (both active and inactive for security)
+        $all_plugins = get_plugins();
         $active_plugins = get_option('active_plugins', array());
 
-        foreach ($active_plugins as $plugin) {
-            $plugin_path = $plugin_dir . '/' . dirname($plugin);
+        // Scan ALL plugin directories (not just active ones)
+        $plugin_directories = glob($plugin_dir . '/*', GLOB_ONLYDIR);
+
+        foreach ($plugin_directories as $plugin_path) {
             if (is_dir($plugin_path)) {
-                $files = $this->find_files_by_extension($plugin_path, $this->priority_extensions, 50); // Limit per plugin
+                // No file limit - comprehensive security scan
+                $files = $this->find_files_by_extension($plugin_path, $this->priority_extensions, 0);
                 $plugin_files = array_merge($plugin_files, $files);
             }
         }
 
         // Add network plugins for multisite
-        if (is_multisite()) {
+        if (function_exists('is_multisite') && is_multisite()) {
             $network_plugins = get_site_option('active_sitewide_plugins', array());
-            foreach (array_keys($network_plugins) as $plugin) {
-                $plugin_path = $plugin_dir . '/' . dirname($plugin);
-                if (is_dir($plugin_path)) {
-                    $files = $this->find_files_by_extension($plugin_path, $this->priority_extensions, 50);
-                    $plugin_files = array_merge($plugin_files, $files);
-                }
-            }
+            // Network plugins already included in directory scan above
         }
+
+        $this->logger->info('Found plugin files for comprehensive scan', array('count' => count($plugin_files)));
 
         return array_unique($plugin_files);
     }
@@ -3688,52 +3810,95 @@ class Themewire_Security_Scanner
      * @since    1.0.29
      * @return   array    Array of active theme file paths
      */
-    private function find_active_theme_files()
+    /**
+     * Find ALL theme files (active AND inactive) for comprehensive security scanning
+     *
+     * @since    1.0.29
+     * @return   array    Array of ALL theme file paths
+     */
+    private function find_all_theme_files()
     {
         $theme_files = array();
-        $themes_dir = get_theme_root();
+        $themes_dir = function_exists('get_theme_root') ? get_theme_root() : WP_CONTENT_DIR . '/themes';
 
         if (!is_dir($themes_dir)) {
             return array();
         }
 
-        // Get active theme
-        $active_theme = wp_get_theme();
-        $active_theme_path = $themes_dir . '/' . $active_theme->get_stylesheet();
+        // Scan ALL theme directories (not just active theme)
+        $theme_directories = glob($themes_dir . '/*', GLOB_ONLYDIR);
 
-        if (is_dir($active_theme_path)) {
-            $files = $this->find_files_by_extension($active_theme_path, $this->priority_extensions, 100);
-            $theme_files = array_merge($theme_files, $files);
-        }
-
-        // Add parent theme if child theme is active
-        if ($active_theme->parent()) {
-            $parent_theme_path = $themes_dir . '/' . $active_theme->get_template();
-            if (is_dir($parent_theme_path)) {
-                $files = $this->find_files_by_extension($parent_theme_path, $this->priority_extensions, 100);
+        foreach ($theme_directories as $theme_path) {
+            if (is_dir($theme_path)) {
+                // No file limit - comprehensive security scan
+                $files = $this->find_files_by_extension($theme_path, $this->priority_extensions, 0);
                 $theme_files = array_merge($theme_files, $files);
             }
         }
+
+        $this->logger->info('Found theme files for comprehensive scan', array('count' => count($theme_files)));
 
         return array_unique($theme_files);
     }
 
     /**
-     * Find suspicious uploads (PHP files, executable files)
+     * Find ALL uploads directory files for comprehensive security scanning
      *
      * @since    1.0.29
-     * @return   array    Array of suspicious upload file paths
+     * @return   array    Array of ALL upload file paths
      */
-    private function find_suspicious_uploads()
+    private function find_all_upload_files()
     {
-        $uploads_dir = wp_upload_dir();
+        $uploads_dir = function_exists('wp_upload_dir') ? wp_upload_dir() : array('basedir' => WP_CONTENT_DIR . '/uploads');
         if (!isset($uploads_dir['basedir']) || !is_dir($uploads_dir['basedir'])) {
             return array();
         }
 
-        // Find PHP and other executable files
-        $suspicious_extensions = array('php', 'phtml', 'php3', 'php4', 'php5', 'php7', 'php8', 'js', 'html', 'htm');
-        return $this->find_files_by_extension($uploads_dir['basedir'], $suspicious_extensions);
+        // Find ALL files that could pose security risks
+        $comprehensive_extensions = array(
+            // PHP variants
+            'php',
+            'phtml',
+            'php3',
+            'php4',
+            'php5',
+            'php7',
+            'php8',
+            // Scripting files
+            'js',
+            'html',
+            'htm',
+            'asp',
+            'aspx',
+            'jsp',
+            'py',
+            'pl',
+            'cgi',
+            // Executable files
+            'exe',
+            'bat',
+            'cmd',
+            'sh',
+            'bin',
+            // Archive files (can contain malware)
+            'zip',
+            'rar',
+            '7z',
+            'tar',
+            'gz',
+            // Configuration files
+            'htaccess',
+            'htpasswd',
+            'ini',
+            'conf',
+            'config'
+        );
+
+        $upload_files = $this->find_files_by_extension($uploads_dir['basedir'], $comprehensive_extensions, 0);
+
+        $this->logger->info('Found upload files for comprehensive scan', array('count' => count($upload_files)));
+
+        return $upload_files;
     }
 
     /**
@@ -3866,16 +4031,16 @@ class Themewire_Security_Scanner
                 $files = $this->find_critical_files();
                 break;
             case 'core_files':
-                $files = $this->find_sample_core_files();
+                $files = $this->find_all_core_files();
                 break;
             case 'plugins':
-                $files = $this->find_active_plugin_files();
+                $files = $this->find_all_plugin_files();
                 break;
             case 'themes':
-                $files = $this->find_active_theme_files();
+                $files = $this->find_all_theme_files();
                 break;
             case 'uploads':
-                $files = $this->find_suspicious_uploads();
+                $files = $this->find_all_upload_files();
                 break;
             default:
                 return array();
