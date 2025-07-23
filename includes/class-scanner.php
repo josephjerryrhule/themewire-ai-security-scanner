@@ -262,7 +262,7 @@ class Themewire_Security_Scanner
 
         // Pre-calculate total files for accurate progress tracking
         $file_inventory = $this->calculate_scan_inventory();
-        
+
         // Initialize optimized scan state
         $scan_state = array(
             'scan_id' => $scan_id,
@@ -282,11 +282,14 @@ class Themewire_Security_Scanner
 
         // Update initial progress with file counts
         $this->database->update_scan_progress(
-            $scan_id, 
-            'initializing', 
-            0, 
+            $scan_id,
+            'initializing',
+            0,
             sprintf(__('Scan initialized: %d total files found', 'themewire-security'), $file_inventory['total_files'])
         );
+
+        // Process the first chunk immediately to get scan started
+        $first_chunk_result = $this->process_optimized_scan_chunk();
 
         return array(
             'success' => true,
@@ -294,6 +297,7 @@ class Themewire_Security_Scanner
             'total_files' => $file_inventory['total_files'],
             'stage_breakdown' => $file_inventory['stage_totals'],
             'optimized' => true,
+            'first_chunk_processed' => $first_chunk_result['success'],
             'message' => sprintf(__('Optimized scan initialized: %d files queued for scanning', 'themewire-security'), $file_inventory['total_files'])
         );
     }
@@ -375,25 +379,59 @@ class Themewire_Security_Scanner
         $files_to_scan = $this->get_files_for_stage($stage, $scan_state);
 
         if (empty($files_to_scan)) {
-            // Move to next stage
-            $next_stage = $this->get_next_scan_stage($stage);
-            if ($next_stage) {
-                $scan_state['stage'] = $next_stage;
-                $scan_state['current_directory'] = '';
-                set_transient('twss_optimized_scan_state', $scan_state, DAY_IN_SECONDS);
-                
-                return array(
-                    'success' => true,
-                    'stage_completed' => $stage,
-                    'next_stage' => $next_stage,
-                    'progress' => $this->calculate_overall_progress($scan_state),
-                    'continue' => true,
-                    'message' => sprintf(__('Completed %s scan, moving to %s', 'themewire-security'), $stage, $next_stage)
-                );
-            } else {
-                // Scan completed
-                return $this->finalize_optimized_scan($scan_state);
+            // Check if current stage is truly complete before moving to next
+            $stage_offset = isset($scan_state['stage_offset']) ? $scan_state['stage_offset'] : 0;
+            $stage_total = isset($scan_state['stage_totals'][$stage]) ? $scan_state['stage_totals'][$stage] : 0;
+
+            // Only move to next stage if we've actually scanned all files for this stage
+            if ($stage_offset >= $stage_total && $stage_total > 0) {
+                // Move to next stage
+                $next_stage = $this->get_next_scan_stage($stage);
+                if ($next_stage) {
+                    $scan_state['stage'] = $next_stage;
+                    $scan_state['current_directory'] = '';
+                    $scan_state['stage_offset'] = 0; // Reset offset for new stage
+                    set_transient('twss_optimized_scan_state', $scan_state, DAY_IN_SECONDS);
+
+                    return array(
+                        'success' => true,
+                        'stage_completed' => $stage,
+                        'next_stage' => $next_stage,
+                        'progress' => $this->calculate_overall_progress($scan_state),
+                        'continue' => true,
+                        'message' => sprintf(
+                            __('Completed %s scan (%d/%d files), moving to %s', 'themewire-security'),
+                            ucfirst(str_replace('_', ' ', $stage)),
+                            $stage_offset,
+                            $stage_total,
+                            ucfirst(str_replace('_', ' ', $next_stage))
+                        )
+                    );
+                } else {
+                    // All stages completed - check if we've truly scanned expected files
+                    if ($scan_state['files_scanned'] >= ($scan_state['total_files'] * 0.95)) { // Allow 5% tolerance
+                        return $this->finalize_optimized_scan($scan_state);
+                    }
+                }
             }
+
+            // If we reach here, something's not right - continue with current stage
+            // This prevents premature finalization
+            return array(
+                'success' => true,
+                'files_processed' => 0,
+                'files_scanned' => $scan_state['files_scanned'],
+                'total_files' => $scan_state['total_files'],
+                'overall_progress' => $this->calculate_overall_progress($scan_state),
+                'current_stage' => ucfirst(str_replace('_', ' ', $stage)),
+                'continue' => true,
+                'message' => sprintf(
+                    __('Continuing %s scan - stage offset: %d, stage total: %d', 'themewire-security'),
+                    $stage,
+                    $stage_offset,
+                    $stage_total
+                )
+            );
         }
 
         // Process files with time and count limits
@@ -421,8 +459,10 @@ class Themewire_Security_Scanner
             $scan_state['files_scanned']++;
         }
 
-        // Update scan state
+        // Update scan state with incremented offset
         $scan_state['last_update'] = time();
+        $scan_state['stage_offset'] = isset($scan_state['stage_offset']) ?
+            $scan_state['stage_offset'] + $files_processed : $files_processed;
         set_transient('twss_optimized_scan_state', $scan_state, DAY_IN_SECONDS);
 
         // Calculate progress
@@ -448,6 +488,43 @@ class Themewire_Security_Scanner
             'total_files' => $scan_state['total_files'],
             'overall_progress' => $overall_progress,
             'stage_progress' => $stage_progress,
+            'current_stage' => ucfirst(str_replace('_', ' ', $stage)),
+            'current_directory' => $scan_state['current_directory'],
+            'current_file' => isset($file_path) ? basename($file_path) : '',
+            'issues_found' => $issues_found,
+            'continue' => true,
+            'stage_breakdown' => array(
+                'critical_files' => array(
+                    'name' => 'Critical Files',
+                    'total' => $scan_state['stage_totals']['critical_files'],
+                    'completed' => $stage === 'critical_files' ? min($scan_state['files_scanned'], $scan_state['stage_totals']['critical_files']) : ($this->stage_completed($stage, 'critical_files') ? $scan_state['stage_totals']['critical_files'] : 0)
+                ),
+                'core_files' => array(
+                    'name' => 'WordPress Core',
+                    'total' => $scan_state['stage_totals']['core_files'],
+                    'completed' => $stage === 'core_files' ? min($scan_state['files_scanned'] - $scan_state['stage_totals']['critical_files'], $scan_state['stage_totals']['core_files']) : ($this->stage_completed($stage, 'core_files') ? $scan_state['stage_totals']['core_files'] : 0)
+                ),
+                'plugins' => array(
+                    'name' => 'Active Plugins',
+                    'total' => $scan_state['stage_totals']['plugins'],
+                    'completed' => $stage === 'plugins' ? min($scan_state['files_scanned'] - $scan_state['stage_totals']['critical_files'] - $scan_state['stage_totals']['core_files'], $scan_state['stage_totals']['plugins']) : ($this->stage_completed($stage, 'plugins') ? $scan_state['stage_totals']['plugins'] : 0)
+                ),
+                'themes' => array(
+                    'name' => 'Active Theme',
+                    'total' => $scan_state['stage_totals']['themes'],
+                    'completed' => $stage === 'themes' ? min($scan_state['files_scanned'] - $scan_state['stage_totals']['critical_files'] - $scan_state['stage_totals']['core_files'] - $scan_state['stage_totals']['plugins'], $scan_state['stage_totals']['themes']) : ($this->stage_completed($stage, 'themes') ? $scan_state['stage_totals']['themes'] : 0)
+                ),
+                'uploads' => array(
+                    'name' => 'Uploads Directory',
+                    'total' => $scan_state['stage_totals']['uploads'],
+                    'completed' => $stage === 'uploads' ? min($scan_state['files_scanned'] - $scan_state['stage_totals']['critical_files'] - $scan_state['stage_totals']['core_files'] - $scan_state['stage_totals']['plugins'] - $scan_state['stage_totals']['themes'], $scan_state['stage_totals']['uploads']) : ($this->stage_completed($stage, 'uploads') ? $scan_state['stage_totals']['uploads'] : 0)
+                )
+            ),
+            'performance' => array(
+                'files_per_second' => $files_processed > 0 ? round($files_processed / max((time() - $start_time), 1), 2) : 0,
+                'elapsed_time' => time() - $scan_state['started'],
+                'estimated_remaining' => $this->estimate_remaining_time($scan_state, $files_processed, time() - $start_time)
+            ),
             'current_stage' => $stage,
             'current_directory' => basename($scan_state['current_directory']),
             'issues_found' => $issues_found,
@@ -1503,12 +1580,14 @@ class Themewire_Security_Scanner
         $checkpoint = get_transient('twss_plugins_scan_checkpoint_' . $scan_id);
         $plugins_scanned = 0;
         $issues_found = 0;
+        $files_scanned = 0;
         $current_plugin_index = 0;
         $current_file_index = 0;
 
         if ($checkpoint) {
             $plugins_scanned = $checkpoint['plugins_scanned'];
             $issues_found = $checkpoint['issues_found'];
+            $files_scanned = isset($checkpoint['files_scanned']) ? $checkpoint['files_scanned'] : 0;
             $current_plugin_index = $checkpoint['current_plugin_index'];
             $current_file_index = $checkpoint['current_file_index'];
         }
@@ -1585,6 +1664,7 @@ class Themewire_Security_Scanner
                     set_transient('twss_plugins_scan_checkpoint_' . $scan_id, array(
                         'plugins_scanned' => $plugins_scanned,
                         'issues_found' => $issues_found,
+                        'files_scanned' => $files_scanned,
                         'current_plugin_index' => $i,
                         'current_file_index' => $batch_end
                     ), HOUR_IN_SECONDS);
@@ -1607,6 +1687,7 @@ class Themewire_Security_Scanner
             set_transient('twss_plugins_scan_checkpoint_' . $scan_id, array(
                 'plugins_scanned' => $plugins_scanned,
                 'issues_found' => $issues_found,
+                'files_scanned' => $files_scanned,
                 'current_plugin_index' => $i + 1,
                 'current_file_index' => 0
             ), HOUR_IN_SECONDS);
@@ -3208,7 +3289,7 @@ class Themewire_Security_Scanner
         // 2. Hidden files and suspicious filenames
         $suspicious_patterns = array('.htaccess', 'wp-config.php', 'index.php');
         $wp_root = ABSPATH;
-        
+
         foreach ($suspicious_patterns as $pattern) {
             $files = glob($wp_root . '*' . $pattern);
             foreach ($files as $file) {
@@ -3283,7 +3364,7 @@ class Themewire_Security_Scanner
 
         // Get only active plugins
         $active_plugins = get_option('active_plugins', array());
-        
+
         foreach ($active_plugins as $plugin) {
             $plugin_path = $plugin_dir . '/' . dirname($plugin);
             if (is_dir($plugin_path)) {
@@ -3325,7 +3406,7 @@ class Themewire_Security_Scanner
         // Get active theme
         $active_theme = wp_get_theme();
         $active_theme_path = $themes_dir . '/' . $active_theme->get_stylesheet();
-        
+
         if (is_dir($active_theme_path)) {
             $files = $this->find_files_by_extension($active_theme_path, $this->priority_extensions, 100);
             $theme_files = array_merge($theme_files, $files);
@@ -3521,7 +3602,7 @@ class Themewire_Security_Scanner
     {
         $stages = array('critical_files', 'core_files', 'plugins', 'themes', 'uploads');
         $current_index = array_search($current_stage, $stages);
-        
+
         if ($current_index === false || $current_index >= count($stages) - 1) {
             return null; // No more stages
         }
@@ -3556,7 +3637,7 @@ class Themewire_Security_Scanner
     {
         $stage = $scan_state['stage'];
         $stage_totals = $scan_state['stage_totals'];
-        
+
         if (!isset($stage_totals[$stage]) || $stage_totals[$stage] == 0) {
             return 100;
         }
@@ -3586,7 +3667,7 @@ class Themewire_Security_Scanner
         }
 
         $results = array();
-        
+
         // Quick malware scan
         $malware_result = $this->scan_file_for_malware($file_path);
         if (!empty($malware_result['issues'])) {
@@ -3597,7 +3678,7 @@ class Themewire_Security_Scanner
                     'detection_type' => 'malware',
                     'stage' => $stage
                 ));
-                
+
                 $this->database->record_issue(
                     $scan_id,
                     $file_path,
@@ -3629,6 +3710,29 @@ class Themewire_Security_Scanner
     {
         $scan_id = $scan_state['scan_id'];
 
+        // Final safety check - make sure we've actually completed enough files
+        if ($scan_state['files_scanned'] < ($scan_state['total_files'] * 0.90)) {
+            // Don't finalize if less than 90% completed - something went wrong
+            error_log("TWSS Warning: Attempted to finalize scan with only " .
+                $scan_state['files_scanned'] . "/" . $scan_state['total_files'] . " files scanned");
+
+            // Reset to last stage and continue
+            $scan_state['stage'] = 'uploads'; // Force to last stage
+            $scan_state['stage_offset'] = 0;
+            set_transient('twss_optimized_scan_state', $scan_state, DAY_IN_SECONDS);
+
+            return array(
+                'success' => true,
+                'message' => 'Scan continuation required - not enough files processed',
+                'files_processed' => 0,
+                'files_scanned' => $scan_state['files_scanned'],
+                'total_files' => $scan_state['total_files'],
+                'overall_progress' => $this->calculate_overall_progress($scan_state),
+                'current_stage' => 'Uploads',
+                'continue' => true
+            );
+        }
+
         // Mark scan as completed
         $this->database->update_scan_status($scan_id, 'completed');
         $this->set_scan_in_progress(false);
@@ -3646,12 +3750,124 @@ class Themewire_Security_Scanner
             'progress' => 100,
             'files_scanned' => $scan_state['files_scanned'],
             'total_files' => $scan_state['total_files'],
-            'message' => sprintf(__('Scan completed! Scanned %d files in %d seconds.', 'themewire-security'), 
-                $scan_state['files_scanned'], 
+            'message' => sprintf(
+                __('Scan completed! Scanned %d files in %d seconds.', 'themewire-security'),
+                $scan_state['files_scanned'],
                 time() - $scan_state['started']
             ),
             'continue' => false,
             'summary' => $summary
+        );
+    }
+
+    /**
+     * Check if a stage has been completed relative to current stage
+     *
+     * @since    1.0.30
+     * @param    string   $current_stage   Current scan stage
+     * @param    string   $check_stage     Stage to check
+     * @return   boolean  True if stage is completed
+     */
+    private function stage_completed($current_stage, $check_stage)
+    {
+        $stage_order = array('critical_files', 'core_files', 'plugins', 'themes', 'uploads');
+        $current_index = array_search($current_stage, $stage_order);
+        $check_index = array_search($check_stage, $stage_order);
+
+        return $current_index > $check_index;
+    }
+
+    /**
+     * Estimate remaining scan time
+     *
+     * @since    1.0.30
+     * @param    array    $scan_state        Current scan state
+     * @param    int      $files_processed   Files processed in this chunk
+     * @param    int      $chunk_duration    Duration of this chunk
+     * @return   string   Formatted remaining time estimate
+     */
+    private function estimate_remaining_time($scan_state, $files_processed, $chunk_duration)
+    {
+        $remaining_files = $scan_state['total_files'] - $scan_state['files_scanned'];
+
+        if ($remaining_files <= 0 || $files_processed <= 0) {
+            return '0 seconds';
+        }
+
+        $files_per_second = $files_processed / max($chunk_duration, 1);
+        $estimated_seconds = $remaining_files / $files_per_second;
+
+        if ($estimated_seconds < 60) {
+            return round($estimated_seconds) . ' seconds';
+        } elseif ($estimated_seconds < 3600) {
+            return round($estimated_seconds / 60) . ' minutes';
+        } else {
+            return round($estimated_seconds / 3600, 1) . ' hours';
+        }
+    }
+
+    /**
+     * Get scan status for real-time updates
+     *
+     * @since    1.0.30
+     * @return   array    Current scan status
+     */
+    public function get_scan_status()
+    {
+        $scan_state = get_transient('twss_optimized_scan_state');
+        if (!$scan_state) {
+            // Check if there's a regular scan running as fallback
+            $legacy_scan_id = get_option('twss_current_scan_id', 0);
+            if ($legacy_scan_id) {
+                return array(
+                    'success' => true,
+                    'legacy_scan' => true,
+                    'scan_id' => $legacy_scan_id,
+                    'status' => 'running',
+                    'message' => 'Legacy scan in progress'
+                );
+            }
+
+            return array(
+                'success' => false,
+                'message' => 'No active scan found',
+                'debug' => array(
+                    'transient_exists' => false,
+                    'legacy_scan_id' => $legacy_scan_id,
+                    'timestamp' => time()
+                )
+            );
+        }
+
+        $overall_progress = $this->calculate_overall_progress($scan_state);
+        $elapsed_time = time() - $scan_state['started'];
+
+        // Check if scan is completed
+        $is_completed = ($scan_state['stage'] === 'uploads' &&
+            $scan_state['files_scanned'] >= $scan_state['total_files']) ||
+            isset($scan_state['completed']) && $scan_state['completed'];
+
+        return array(
+            'success' => true,
+            'optimized' => true,  // Add optimized flag
+            'status' => $is_completed ? 'completed' : 'running', // Dynamic status
+            'scan_active' => !$is_completed,
+            'scan_id' => $scan_state['scan_id'],
+            'files_scanned' => $scan_state['files_scanned'],
+            'total_files' => $scan_state['total_files'],
+            'overall_progress' => $is_completed ? 100 : $overall_progress,
+            'current_stage' => ucfirst(str_replace('_', ' ', $scan_state['stage'])),
+            'current_directory' => $scan_state['current_directory'] ? basename($scan_state['current_directory']) : 'Starting...',
+            'elapsed_time' => $elapsed_time,
+            'files_per_second' => $scan_state['files_scanned'] > 0 ? round($scan_state['files_scanned'] / max($elapsed_time, 1), 2) : 0,
+            'stage_breakdown' => $scan_state['stage_totals'],
+            'scan_state' => $scan_state,  // Add full scan state for detailed progress tracking
+            'issues_found' => isset($scan_state['issues_found']) ? $scan_state['issues_found'] : 0,
+            'debug' => array(
+                'stage_offset' => isset($scan_state['stage_offset']) ? $scan_state['stage_offset'] : 0,
+                'stage_total' => isset($scan_state['stage_totals'][$scan_state['stage']]) ? $scan_state['stage_totals'][$scan_state['stage']] : 0,
+                'transient_age' => time() - (isset($scan_state['last_update']) ? $scan_state['last_update'] : $scan_state['started'])
+            )
         );
     }
 }

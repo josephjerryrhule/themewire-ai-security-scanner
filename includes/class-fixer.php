@@ -723,7 +723,7 @@ class Themewire_Security_Fixer
 
         // Check high risk patterns
         foreach ($high_risk_patterns as $pattern => $description) {
-            if (preg_match('/' . $pattern . '/i', $file_content)) {
+            if (preg_match('#' . $pattern . '#i', $file_content)) {
                 $indicators[] = $description;
                 $confidence += 30;
             }
@@ -731,7 +731,7 @@ class Themewire_Security_Fixer
 
         // Check medium risk patterns
         foreach ($medium_risk_patterns as $pattern => $description) {
-            if (preg_match('/' . $pattern . '/i', $file_content)) {
+            if (preg_match('#' . $pattern . '#i', $file_content)) {
                 $indicators[] = $description;
                 $confidence += 15;
             }
@@ -746,7 +746,7 @@ class Themewire_Security_Fixer
         // Check for suspicious variable names
         $suspicious_vars = array('\$[a-zA-Z]*[0-9]{3,}', '\$_+[a-zA-Z]', '\$[a-zA-Z]*_+[a-zA-Z]*_+');
         foreach ($suspicious_vars as $pattern) {
-            if (preg_match('/' . $pattern . '/', $file_content)) {
+            if (preg_match('#' . $pattern . '#', $file_content)) {
                 $indicators[] = 'Suspicious variable naming patterns';
                 $confidence += 10;
                 break;
@@ -754,13 +754,13 @@ class Themewire_Security_Fixer
         }
 
         // Check for long encoded strings
-        if (preg_match('/(\'|")([\w+\/=]{100,})(\'|")/', $file_content)) {
+        if (preg_match('#(\'|")([\w+\/=]{100,})(\'|")#', $file_content)) {
             $indicators[] = 'Contains long encoded strings';
             $confidence += 20;
         }
 
         // Check for iframe injections
-        if (preg_match('/<iframe[^>]*src\s*=\s*[\'"][^\'\"]*[\'"][^>]*>/i', $file_content)) {
+        if (preg_match('#<iframe[^>]*src\s*=\s*[\'"][^\'\"]*[\'"][^>]*>#i', $file_content)) {
             $indicators[] = 'Contains iframe tags (potential injection)';
             $confidence += 25;
         }
@@ -785,12 +785,12 @@ class Themewire_Security_Fixer
     private function is_heavily_obfuscated($content)
     {
         // Check for very long lines
-        if (preg_match('/^.{500,}$/m', $content)) {
+        if (preg_match('#^.{500,}$#m', $content)) {
             return true;
         }
 
         // Check ratio of special characters
-        $special_chars = preg_match_all('/[\^\$\*\(\)\[\]\{\}\?\+\.\\\\]/', $content);
+        $special_chars = preg_match_all('#[\^\$\*\(\)\[\]\{\}\?\+\.\\\\]#', $content);
         $total_length = strlen($content);
 
         if ($total_length > 0 && ($special_chars / $total_length) > 0.15) {
@@ -798,7 +798,7 @@ class Themewire_Security_Fixer
         }
 
         // Check for excessive concatenation
-        if (preg_match_all('/\s*\.\s*/', $content) > ($total_length / 100)) {
+        if (preg_match_all('#\s*\.\s*#', $content) > ($total_length / 100)) {
             return true;
         }
 

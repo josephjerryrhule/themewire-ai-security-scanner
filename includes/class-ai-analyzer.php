@@ -697,7 +697,7 @@ class Themewire_Security_AI_Analyzer
         }
 
         // Temp or cache directories with executable files
-        if (preg_match('/\/(tmp|temp|cache|log)\/.*\.(php|js|html)$/i', $file_path)) {
+        if (preg_match('#\/(tmp|temp|cache|log)\/.*\.(php|js|html)$#i', $file_path)) {
             $indicators[] = 'Executable file in temp directory';
             $confidence += 30;
             $suspicious = true;
@@ -764,7 +764,7 @@ class Themewire_Security_AI_Analyzer
         $high_risk = false;
 
         // Remote file inclusion
-        if (preg_match('/file_get_contents\s*\(\s*["\']https?:\/\//', $content)) {
+        if (preg_match('#file_get_contents\s*\(\s*["\']https?:\/\/#', $content)) {
             $indicators[] = 'Remote file inclusion detected';
             $confidence += 25;
             $high_risk = true;
@@ -1079,15 +1079,19 @@ class Themewire_Security_AI_Analyzer
         $api_key = $this->openrouter_client->api_key;
         $url = 'https://openrouter.ai/api/v1/chat/completions';
 
+        // Get the actual website URL for tracking
+        $site_url = get_site_url();
+        $site_name = get_bloginfo('name');
+
         $headers = array(
             'Content-Type: application/json',
             'Authorization: Bearer ' . $api_key,
-            'HTTP-Referer: https://yourdomain.com', // Replace with your actual domain
-            'X-Title: WordPress Security Scanner'
+            'HTTP-Referer: ' . $site_url,
+            'X-Title: WordPress Security Scanner - ' . $site_name
         );
 
         $data = array(
-            'model' => get_option('twss_openrouter_model', 'meta-llama/llama-3.1-8b-instruct:free'), // Configurable model
+            'model' => get_option('twss_openrouter_model', 'openai/gpt-3.5-turbo'), // Updated to working model
             'messages' => array(
                 array(
                     'role' => 'system',
@@ -1129,6 +1133,26 @@ class Themewire_Security_AI_Analyzer
                 $error_code = isset($error['code']) ? $error['code'] : 0;
                 $error_message = isset($error['message']) ? $error['message'] : 'Unknown API error';
                 $error_type = isset($error['type']) ? $error['type'] : 'UNKNOWN';
+
+                // Handle model not found errors (404)
+                if ($error_code === 404 && strpos($error_message, 'endpoints') !== false) {
+                    error_log("OpenRouter Model Not Available: {$error_message} - Trying fallback model");
+
+                    // Try with a reliable fallback model
+                    $fallback_models = ['openai/gpt-3.5-turbo', 'microsoft/wizardlm-2-8x22b:free', 'google/gemma-2-9b-it:free'];
+                    $current_model = get_option('twss_openrouter_model', 'openai/gpt-3.5-turbo');
+
+                    foreach ($fallback_models as $fallback_model) {
+                        if ($fallback_model !== $current_model) {
+                            // Update model setting and retry
+                            update_option('twss_openrouter_model', $fallback_model);
+                            error_log("Switching to fallback model: {$fallback_model}");
+                            throw new Exception("Model not available. Switched to {$fallback_model}. Please retry your request.");
+                        }
+                    }
+
+                    throw new Exception('Current model unavailable and fallback models failed. Please check OpenRouter model availability.');
+                }
 
                 // Handle quota/credit exhausted errors
                 if ($error_code === 429 || strpos($error_message, 'quota') !== false || strpos($error_message, 'credit') !== false) {
@@ -1689,31 +1713,31 @@ class Themewire_Security_AI_Analyzer
     public function get_openrouter_models()
     {
         return array(
-            // Free models
-            'meta-llama/llama-3.1-8b-instruct:free' => array(
-                'name' => 'Llama 3.1 8B Instruct (Free)',
-                'description' => 'Fast and efficient model, good for security analysis',
-                'cost' => 'Free',
-                'context' => '128k tokens'
-            ),
+            // Free models (verified working)
             'microsoft/wizardlm-2-8x22b:free' => array(
                 'name' => 'WizardLM-2 8x22B (Free)',
-                'description' => 'High-quality reasoning model',
+                'description' => 'High-quality reasoning model for security analysis',
                 'cost' => 'Free',
                 'context' => '65k tokens'
             ),
             'google/gemma-2-9b-it:free' => array(
                 'name' => 'Gemma 2 9B IT (Free)',
-                'description' => 'Google\'s open model, good performance',
+                'description' => 'Google\'s open model, reliable performance',
                 'cost' => 'Free',
                 'context' => '8k tokens'
             ),
-            
-            // Paid models (better performance)
-            'openai/gpt-4o-mini' => array(
-                'name' => 'GPT-4o Mini',
-                'description' => 'OpenAI\'s efficient model with great security analysis',
-                'cost' => '$0.15/1M input, $0.60/1M output',
+            'meta-llama/llama-3-8b-instruct:free' => array(
+                'name' => 'Llama 3 8B Instruct (Free)',
+                'description' => 'Meta\'s efficient model for code analysis',
+                'cost' => 'Free',
+                'context' => '8k tokens'
+            ),
+
+            // Paid models (better performance and reliability)
+            'openai/gpt-3.5-turbo' => array(
+                'name' => 'GPT-3.5 Turbo',
+                'description' => 'OpenAI\'s reliable model with excellent security analysis',
+                'cost' => '$0.50/1M input, $1.50/1M output',
                 'context' => '128k tokens'
             ),
             'openai/gpt-4-turbo' => array(
@@ -1751,7 +1775,7 @@ class Themewire_Security_AI_Analyzer
      * @param    string    $model      The model to test (optional)
      * @return   array                 Success status and message
      */
-    public function test_openrouter_api_with_model($api_key, $model = 'meta-llama/llama-3.1-8b-instruct:free')
+    public function test_openrouter_api_with_model($api_key, $model = 'openai/gpt-3.5-turbo')
     {
         try {
             $data = array(
@@ -1765,11 +1789,15 @@ class Themewire_Security_AI_Analyzer
                 'max_tokens' => 20
             );
 
+            // Get the actual website URL for tracking
+            $site_url = get_site_url();
+            $site_name = get_bloginfo('name');
+
             $headers = array(
                 'Content-Type: application/json',
                 'Authorization: Bearer ' . $api_key,
-                'HTTP-Referer: https://yourdomain.com',
-                'X-Title: Themewire Security Scanner Test'
+                'HTTP-Referer: ' . $site_url,
+                'X-Title: ' . $site_name . ' - Themewire Security Scanner Test'
             );
 
             $curl = curl_init();
@@ -1796,7 +1824,7 @@ class Themewire_Security_AI_Analyzer
                 $error_data = json_decode($response, true);
                 if (isset($error_data['error'])) {
                     $error_msg = $error_data['error']['message'] ?? 'Unknown API error';
-                    
+
                     // Handle specific model errors
                     if (strpos($error_msg, 'model') !== false) {
                         return array(
@@ -1804,13 +1832,13 @@ class Themewire_Security_AI_Analyzer
                             'message' => 'Model "' . $model . '" is not available or accessible with your API key. ' . $error_msg
                         );
                     }
-                    
+
                     return array(
                         'success' => false,
                         'message' => $error_msg
                     );
                 }
-                
+
                 return array(
                     'success' => false,
                     'message' => 'API returned status code ' . $status
@@ -1830,7 +1858,6 @@ class Themewire_Security_AI_Analyzer
                 'success' => false,
                 'message' => 'Unexpected API response format'
             );
-
         } catch (Exception $e) {
             return array(
                 'success' => false,

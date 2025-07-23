@@ -17,6 +17,7 @@ if (isset($_POST['twss_settings_submit'])) {
     update_option('twss_openai_api_key', sanitize_text_field($_POST['twss_openai_api_key']));
     update_option('twss_gemini_api_key', sanitize_text_field($_POST['twss_gemini_api_key']));
     update_option('twss_openrouter_api_key', sanitize_text_field($_POST['twss_openrouter_api_key']));
+    update_option('twss_openrouter_model', sanitize_text_field($_POST['twss_openrouter_model']));
     update_option('twss_use_fallback_ai', isset($_POST['twss_use_fallback_ai']) ? true : false);
     update_option('twss_scheduled_time', sanitize_text_field($_POST['twss_scheduled_time']));
     update_option('twss_auto_fix', isset($_POST['twss_auto_fix']) ? true : false);
@@ -36,6 +37,7 @@ $ai_provider = get_option('twss_ai_provider', 'openai');
 $openai_api_key = get_option('twss_openai_api_key', '');
 $gemini_api_key = get_option('twss_gemini_api_key', '');
 $openrouter_api_key = get_option('twss_openrouter_api_key', '');
+$openrouter_model = get_option('twss_openrouter_model', 'meta-llama/llama-3.1-8b-instruct:free');
 $use_fallback_ai = get_option('twss_use_fallback_ai', true);
 $use_fallback_ai = get_option('twss_use_fallback_ai', true);
 $scheduled_time = get_option('twss_scheduled_time', '02:00');
@@ -121,6 +123,34 @@ $remove_data = get_option('twss_remove_data_on_uninstall', false);
                                 <p class="description"><?php _e('OpenRouter provides access to multiple AI models including Claude, GPT-4, Llama, and more.', 'themewire-security'); ?></p>
                             </div>
                         </div>
+                    </td>
+                </tr>
+
+                <tr class="openrouter-settings openrouter-model-selection" <?php echo ($ai_provider !== 'openrouter' || empty($openrouter_api_key)) ? 'style="display:none;"' : ''; ?>>
+                    <th scope="row">
+                        <label for="twss_openrouter_model"><?php _e('OpenRouter Model', 'themewire-security'); ?></label>
+                    </th>
+                    <td>
+                        <select name="twss_openrouter_model" id="twss_openrouter_model" class="regular-text">
+                            <?php
+                            // Get AI analyzer instance to access models
+                            $ai_analyzer = new Themewire_Security_AI_Analyzer();
+                            $models = $ai_analyzer->get_openrouter_models();
+
+                            foreach ($models as $model_id => $model_info) {
+                                $selected = selected($openrouter_model, $model_id, false);
+                                $cost_badge = $model_info['cost'] === 'Free' ? '<span style="color: #46b450; font-weight: bold;">[FREE]</span>' : '<span style="color: #FF7342;">[PAID]</span>';
+                                echo "<option value='{$model_id}' {$selected}>{$model_info['name']} {$cost_badge}</option>";
+                            }
+                            ?>
+                        </select>
+                        <div id="openrouter-model-info" style="margin-top: 10px; padding: 10px; background: #f9f9f9; border-left: 4px solid #00a0d2; display: none;">
+                            <h4 id="model-info-name"></h4>
+                            <p id="model-info-description"></p>
+                            <p><strong>Cost:</strong> <span id="model-info-cost"></span></p>
+                            <p><strong>Context Length:</strong> <span id="model-info-context"></span></p>
+                        </div>
+                        <p class="description"><?php _e('Choose the AI model for malware analysis. Free models have daily limits but no cost. Paid models offer better performance and higher limits.', 'themewire-security'); ?></p>
                     </td>
                 </tr>
 
@@ -223,6 +253,19 @@ $remove_data = get_option('twss_remove_data_on_uninstall', false);
 
     <script>
         jQuery(document).ready(function($) {
+            // Model info data
+            var modelInfo = {
+                <?php
+                $ai_analyzer = new Themewire_Security_AI_Analyzer();
+                $models = $ai_analyzer->get_openrouter_models();
+                $model_js = array();
+                foreach ($models as $model_id => $model_data) {
+                    $model_js[] = '"' . $model_id . '": ' . json_encode($model_data);
+                }
+                echo implode(",\n                ", $model_js);
+                ?>
+            };
+
             // Show/hide API key fields based on selected provider
             $('#twss_ai_provider').on('change', function() {
                 var provider = $(this).val();
@@ -239,10 +282,41 @@ $remove_data = get_option('twss_remove_data_on_uninstall', false);
                     $('.openai-settings').hide();
                     $('.gemini-settings').hide();
                     $('.openrouter-settings').show();
+                    updateModelInfo(); // Show model info when OpenRouter is selected
                 } else {
                     $('.openai-settings, .gemini-settings, .openrouter-settings').hide();
                 }
             });
+
+            // Update model information when selection changes
+            $('#twss_openrouter_model').on('change', function() {
+                updateModelInfo();
+            });
+
+            // Function to update model information display
+            function updateModelInfo() {
+                var selectedModel = $('#twss_openrouter_model').val();
+                var info = modelInfo[selectedModel];
+
+                if (info) {
+                    $('#model-info-name').text(info.name);
+                    $('#model-info-description').text(info.description);
+                    $('#model-info-cost').text(info.cost);
+                    $('#model-info-context').text(info.context);
+                    $('#openrouter-model-info').show();
+                } else {
+                    $('#openrouter-model-info').hide();
+                }
+            }
+
+            // Initialize model info display if OpenRouter is already selected
+            if ($('#twss_ai_provider').val() === 'openrouter') {
+                updateModelInfo();
+                // If there's already an API key saved, show the model selection
+                if ($('#twss_openrouter_api_key').val().trim() !== '') {
+                    $('.openrouter-model-selection').show();
+                }
+            }
         });
     </script>
 </div>

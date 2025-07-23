@@ -713,7 +713,7 @@ class Themewire_Security_Database
             $file_path = $issue['file_path'];
 
             // Extract theme name from path
-            if (preg_match('/\/themes\/([^\/]+)/', $file_path, $matches)) {
+            if (preg_match('#\/themes\/([^\/]+)#', $file_path, $matches)) {
                 $theme_name = $matches[1];
                 $theme_dir = get_theme_root() . '/' . $theme_name;
 
@@ -740,7 +740,7 @@ class Themewire_Security_Database
             $file_path = $issue['file_path'];
 
             // Extract plugin directory name from path
-            if (preg_match('/\/plugins\/([^\/]+)/', $file_path, $matches)) {
+            if (preg_match('#\/plugins\/([^\/]+)#', $file_path, $matches)) {
                 $plugin_dir = $matches[1];
                 $full_plugin_dir = WP_PLUGIN_DIR . '/' . $plugin_dir;
 

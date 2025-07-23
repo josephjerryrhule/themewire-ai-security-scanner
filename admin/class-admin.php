@@ -525,8 +525,8 @@ class Themewire_Security_Admin
             wp_send_json_error(__('You do not have permission to perform this action', 'themewire-security'));
         }
 
-        // Use chunked scanning to prevent timeouts
-        $result = $this->scanner->start_chunked_scan();
+        // Use optimized scanning with real-time progress
+        $result = $this->scanner->start_optimized_scan();
 
         if ($result['success']) {
             wp_send_json_success($result);
@@ -552,23 +552,13 @@ class Themewire_Security_Admin
             wp_send_json_error(__('You do not have permission to perform this action', 'themewire-security'));
         }
 
-        $scan_id = isset($_POST['scan_id']) ? intval($_POST['scan_id']) : null;
+        // Get comprehensive scan status from scanner
+        $status = $this->scanner->get_scan_status();
 
-        // If no scan_id provided, try to get the current scan ID
-        if (!$scan_id) {
-            $scan_id = get_option('twss_current_scan_id');
-        }
-
-        if (!$scan_id) {
-            wp_send_json_error(__('No scan in progress', 'themewire-security'));
-        }
-
-        $scan_status = $this->database->get_scan_summary($scan_id);
-
-        if ($scan_status) {
-            wp_send_json_success($scan_status);
+        if ($status['success']) {
+            wp_send_json_success($status);
         } else {
-            wp_send_json_error(__('Scan not found', 'themewire-security'));
+            wp_send_json_error($status);
         }
     }
 
@@ -585,7 +575,14 @@ class Themewire_Security_Admin
             wp_send_json_error(__('You do not have permission to perform this action', 'themewire-security'));
         }
 
-        $result = $this->scanner->process_scan_chunk();
+        // Check if we're using optimized scanning
+        $optimized_state = get_transient('twss_optimized_scan_state');
+        if ($optimized_state) {
+            $result = $this->scanner->process_optimized_scan_chunk();
+        } else {
+            // Fallback to legacy chunked scanning
+            $result = $this->scanner->process_scan_chunk();
+        }
 
         if ($result['success']) {
             wp_send_json_success($result);

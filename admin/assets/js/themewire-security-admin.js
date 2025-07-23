@@ -2659,7 +2659,7 @@
   }
 
   /**
-   * Poll scan status and update progress with chunked processing
+   * Poll scan status and update progress with optimized real-time tracking
    *
    * @param {string} scanId - The scan ID to check (can be null for current scan)
    */
@@ -2684,8 +2684,64 @@
           if (response.success && response.data) {
             var data = response.data;
 
-            // Update progress based on current stage
-            if (data.current_stage && data.progress !== undefined) {
+            // Handle optimized scan progress
+            if (data.optimized && data.scan_state) {
+              var state = data.scan_state;
+              var progress = 0;
+
+              // Calculate progress based on files scanned vs total
+              if (state.total_files > 0) {
+                progress = Math.round(
+                  (state.files_scanned / state.total_files) * 100
+                );
+              }
+
+              // Create detailed progress message
+              var message = "Scanning " + state.total_files + " files...";
+              if (state.current_stage) {
+                var stageName = state.current_stage
+                  .replace("_", " ")
+                  .replace(/\b\w/g, (l) => l.toUpperCase());
+                message =
+                  stageName +
+                  ": " +
+                  state.files_scanned +
+                  "/" +
+                  state.total_files +
+                  " files (" +
+                  progress +
+                  "% complete)";
+              }
+
+              if (state.current_directory) {
+                message += " - " + state.current_directory;
+              }
+
+              // Show elapsed time
+              if (state.started) {
+                var elapsed = Math.floor(Date.now() / 1000 - state.started);
+                var minutes = Math.floor(elapsed / 60);
+                var seconds = elapsed % 60;
+                message +=
+                  " [" +
+                  minutes +
+                  ":" +
+                  (seconds < 10 ? "0" : "") +
+                  seconds +
+                  "]";
+              }
+
+              // Show estimated remaining time if available
+              if (data.estimated_time_remaining) {
+                message +=
+                  " (~" + data.estimated_time_remaining + " remaining)";
+              }
+
+              // Update progress bar with detailed info
+              updateProgressBar(progress, state.current_stage, message);
+            }
+            // Legacy progress handling for chunked scans
+            else if (data.current_stage && data.progress !== undefined) {
               // Update stage progress
               stageProgress[data.current_stage] = parseInt(data.progress);
 
@@ -2724,11 +2780,23 @@
               var stopButton = $("#stop-scan-button");
 
               if (data.status === "completed") {
-                updateProgressBar(
-                  100,
-                  "completed",
-                  "Scan completed successfully!"
-                );
+                var completedMessage = "Scan completed successfully!";
+                if (data.scan_state && data.scan_state.started) {
+                  var totalTime = Math.floor(
+                    Date.now() / 1000 - data.scan_state.started
+                  );
+                  var minutes = Math.floor(totalTime / 60);
+                  var seconds = totalTime % 60;
+                  completedMessage +=
+                    " (" +
+                    minutes +
+                    ":" +
+                    (seconds < 10 ? "0" : "") +
+                    seconds +
+                    ")";
+                }
+
+                updateProgressBar(100, "completed", completedMessage);
                 statusArea.html(
                   '<div class="notice notice-success"><p>Scan completed! Found ' +
                     (data.issues_found || 0) +
@@ -2755,11 +2823,65 @@
                 stopButton.prop("disabled", true);
               }
             } else if (data.status === "running") {
-              // For chunked scans, trigger the next chunk processing
-              processNextChunk();
+              // For optimized scans, trigger background processing
+              if (data.optimized) {
+                processOptimizedScanChunk();
+              } else {
+                // For legacy chunked scans, trigger the next chunk processing
+                processNextChunk();
+              }
             }
           } else {
+            // Handle "No active scan found" error
             console.log("No scan status data received or scan not found");
+            console.log("Response:", response);
+
+            // If we got a response but it failed, check if it's a temporary issue
+            if (
+              response &&
+              !response.success &&
+              response.data &&
+              response.data.message
+            ) {
+              if (
+                response.data.message.indexOf("No active scan found") !== -1
+              ) {
+                // This could be a temporary issue during stage transition
+                // Try to recover by attempting to restart optimized scan processing
+                console.log("Attempting scan recovery...");
+
+                // Try once to process a chunk - this might resurrect a stuck scan
+                $.ajax({
+                  url: twss_data.ajax_url,
+                  type: "POST",
+                  data: {
+                    action: "twss_process_scan_chunk",
+                    nonce: twss_data.nonce,
+                  },
+                  success: function (recoveryResponse) {
+                    if (recoveryResponse.success) {
+                      console.log("Scan recovery successful");
+                    } else {
+                      console.log(
+                        "Scan recovery failed - scan may be truly completed"
+                      );
+                      clearInterval(pollInterval);
+                      pollInterval = null;
+                      updateProgressBar(
+                        100,
+                        "completed",
+                        "Scan completed (recovered from temporary error)"
+                      );
+                    }
+                  },
+                  error: function () {
+                    console.log("Scan recovery failed - stopping polling");
+                    clearInterval(pollInterval);
+                    pollInterval = null;
+                  },
+                });
+              }
+            }
           }
         },
         error: function (xhr) {
@@ -2771,10 +2893,36 @@
           }
         },
       });
-    }, 3000); // Poll every 3 seconds for chunked scans
+    }, 2000); // Poll every 2 seconds for optimized scans
 
     // Update global reference for stop scan functionality
     window.twssPollInterval = pollInterval;
+  }
+
+  /**
+   * Process optimized scan chunk (background processing)
+   */
+  function processOptimizedScanChunk() {
+    $.ajax({
+      url: twss_data.ajax_url,
+      type: "POST",
+      data: {
+        action: "twss_process_scan_chunk",
+        nonce: twss_data.nonce,
+      },
+      success: function (response) {
+        if (response.success && response.data) {
+          // Just let the polling handle the progress updates
+          // Background processing will continue automatically
+          console.log("Optimized scan chunk processed");
+        } else {
+          console.log("Optimized scan processing complete or error:", response);
+        }
+      },
+      error: function (xhr) {
+        console.log("Error processing optimized scan chunk:", xhr.responseText);
+      },
+    });
   }
 
   /**
@@ -2922,12 +3070,16 @@
               response.data.message +
               "</span>"
           );
+          // Show model selection when API test is successful
+          $(".openrouter-model-selection").show();
         } else {
           statusSpan.html(
             '<span style="color: #d63638;">✗ ' +
               response.data.message +
               "</span>"
           );
+          // Hide model selection if API test fails
+          $(".openrouter-model-selection").hide();
         }
       },
       error: function () {
