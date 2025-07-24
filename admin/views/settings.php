@@ -46,7 +46,17 @@ if (isset($_POST['twss_settings_submit']) && wp_verify_nonce($_POST['twss_settin
             'enable_logging' => !empty($_POST['twss_enable_logging']),
             'log_level' => sanitize_text_field($_POST['twss_log_level'] ?? 'warning'),
             'quarantine_threats' => !empty($_POST['twss_quarantine_threats']),
-            'notification_email' => sanitize_email($_POST['twss_notification_email'] ?? get_option('admin_email'))
+            'notification_email' => sanitize_email($_POST['twss_notification_email'] ?? get_option('admin_email')),
+            // Real-time protection settings
+            'enable_realtime_protection' => !empty($_POST['twss_enable_realtime_protection']),
+            'realtime_file_monitoring' => !empty($_POST['twss_realtime_file_monitoring']),
+            'realtime_database_monitoring' => !empty($_POST['twss_realtime_database_monitoring']),
+            'realtime_waf_enabled' => !empty($_POST['twss_realtime_waf_enabled']),
+            'realtime_rate_limiting' => !empty($_POST['twss_realtime_rate_limiting']),
+            'realtime_ip_reputation' => !empty($_POST['twss_realtime_ip_reputation']),
+            'realtime_behavioral_analysis' => !empty($_POST['twss_realtime_behavioral_analysis']),
+            'realtime_max_file_size' => max(1, min(100, intval($_POST['twss_realtime_max_file_size'] ?? 10))),
+            'realtime_monitoring_interval' => max(10, min(300, intval($_POST['twss_realtime_monitoring_interval'] ?? 30)))
         );
 
         // Security: Validate AI provider selection
@@ -396,129 +406,255 @@ foreach (['openai_api_key', 'gemini_api_key', 'openrouter_api_key', 'groq_api_ke
             </div>
         </div>
 
-        <!-- Security Actions -->
         <div class="card">
-            <h2 class="card-title"><?php echo esc_html__('Security Actions', 'themewire-security'); ?></h2>
+            <h2 class="card-title"><?php echo esc_html__('AI-Powered Auto-Fix Mode', 'themewire-security'); ?></h2>
 
             <div class="form-section">
                 <div class="form-row">
                     <div class="form-field">
-                        <label class="form-checkbox">
-                            <input type="checkbox" name="twss_auto_fix" value="1" <?php checked($current_settings['auto_fix']); ?>>
-                            <span class="checkmark"></span>
-                            <?php echo esc_html__('Automatic Issue Resolution', 'themewire-security'); ?>
+                        <label class="form-checkbox" style="font-size: 16px; font-weight: 600;">
+                            <input type="checkbox" name="twss_auto_fix" value="1" <?php checked($current_settings['auto_fix']); ?> style="transform: scale(1.2);">
+                            <span class="checkmark" style="background-color: #FF7342; border-color: #FF7342;"></span>
+                            <?php echo esc_html__('🤖 Enable AI Auto-Fix Mode', 'themewire-security'); ?>
                         </label>
-                        <p class="form-description"><?php echo esc_html__('Automatically attempt to fix detected security issues.', 'themewire-security'); ?></p>
+                        <p class="form-description" style="margin-top: 8px; font-size: 14px; color: #666;">
+                            <?php echo esc_html__('Automatically analyze and patch malware using AI. Files are backed up before applying any fixes.', 'themewire-security'); ?>
+                        </p>
+                    </div>
+                </div>
+
+                <div class="form-row" style="margin-top: 20px;">
+                    <div class="form-field">
+                        <label class="form-checkbox">
+                            <input type="checkbox" name="twss_ai_fix_aggressive" value="1" <?php checked(get_option('twss_ai_fix_aggressive', false)); ?>>
+                            <span class="checkmark"></span>
+                            <?php echo esc_html__('Aggressive AI Fixing', 'themewire-security'); ?>
+                        </label>
+                        <p class="form-description"><?php echo esc_html__('Apply AI fixes to suspicious files with lower confidence scores (experimental).', 'themewire-security'); ?></p>
                     </div>
 
                     <div class="form-field">
                         <label class="form-checkbox">
                             <input type="checkbox" name="twss_quarantine_threats" value="1" <?php checked($current_settings['quarantine_threats']); ?>>
                             <span class="checkmark"></span>
-                            <?php echo esc_html__('Quarantine Threats', 'themewire-security'); ?>
+                            <?php echo esc_html__('Quarantine Before Fixing', 'themewire-security'); ?>
                         </label>
-                        <p class="form-description"><?php echo esc_html__('Move detected malware to secure quarantine instead of deleting.', 'themewire-security'); ?></p>
+                        <p class="form-description"><?php echo esc_html__('Always backup files to quarantine before applying any fixes (recommended).', 'themewire-security'); ?></p>
                     </div>
                 </div>
             </div>
         </div>
 
-        <!-- Notifications -->
+        <!-- Security Actions -->
         <div class="card">
-            <h2 class="card-title"><?php echo esc_html__('Notifications', 'themewire-security'); ?></h2>
+            <h2 class="card-title"><?php echo esc_html__('Additional Security Actions', 'themewire-security'); ?></h2>
 
             <div class="form-section">
                 <div class="form-row">
-                    <div class="form-field">
-                        <label class="form-checkbox">
-                            <input type="checkbox" name="twss_send_email" value="1" <?php checked($current_settings['send_email']); ?>>
-                            <span class="checkmark"></span>
-                            <?php echo esc_html__('Email Notifications', 'themewire-security'); ?>
-                        </label>
-                        <p class="form-description"><?php echo esc_html__('Send email notifications when security issues are detected.', 'themewire-security'); ?></p>
-                    </div>
+                </div>
+            </div>
 
-                    <div class="form-field">
-                        <label for="twss_notification_email" class="form-label">
-                            <?php echo esc_html__('Notification Email', 'themewire-security'); ?>
-                        </label>
-                        <input type="email" name="twss_notification_email" id="twss_notification_email"
-                            class="form-input" value="<?php echo esc_attr($current_settings['notification_email']); ?>">
-                        <p class="form-description"><?php echo esc_html__('Email address to receive security notifications.', 'themewire-security'); ?></p>
+            <!-- Notifications -->
+            <div class="card">
+                <h2 class="card-title"><?php echo esc_html__('Notifications', 'themewire-security'); ?></h2>
+
+                <div class="form-section">
+                    <div class="form-row">
+                        <div class="form-field">
+                            <label class="form-checkbox">
+                                <input type="checkbox" name="twss_send_email" value="1" <?php checked($current_settings['send_email']); ?>>
+                                <span class="checkmark"></span>
+                                <?php echo esc_html__('Email Notifications', 'themewire-security'); ?>
+                            </label>
+                            <p class="form-description"><?php echo esc_html__('Send email notifications when security issues are detected.', 'themewire-security'); ?></p>
+                        </div>
+
+                        <div class="form-field">
+                            <label for="twss_notification_email" class="form-label">
+                                <?php echo esc_html__('Notification Email', 'themewire-security'); ?>
+                            </label>
+                            <input type="email" name="twss_notification_email" id="twss_notification_email"
+                                class="form-input" value="<?php echo esc_attr($current_settings['notification_email']); ?>">
+                            <p class="form-description"><?php echo esc_html__('Email address to receive security notifications.', 'themewire-security'); ?></p>
+                        </div>
                     </div>
                 </div>
             </div>
-        </div>
 
-        <!-- Advanced Settings -->
-        <div class="card">
-            <h2 class="card-title"><?php echo esc_html__('Advanced Settings', 'themewire-security'); ?></h2>
+            <!-- Real-Time Protection Settings -->
+            <div class="card">
+                <h2 class="card-title">🛡️ <?php echo esc_html__('Real-Time Protection', 'themewire-security'); ?></h2>
 
-            <div class="form-section">
-                <div class="form-row">
-                    <div class="form-field">
-                        <label class="form-checkbox">
-                            <input type="checkbox" name="twss_enable_logging" value="1" <?php checked($current_settings['enable_logging']); ?>>
-                            <span class="checkmark"></span>
-                            <?php echo esc_html__('Enable Security Logging', 'themewire-security'); ?>
-                        </label>
-                        <p class="form-description"><?php echo esc_html__('Log security scan activities and events.', 'themewire-security'); ?></p>
+                <div class="form-section">
+                    <div class="form-row">
+                        <div class="form-field">
+                            <label class="form-checkbox">
+                                <input type="checkbox" name="twss_enable_realtime_protection" value="1"
+                                    <?php checked(get_option('twss_enable_realtime_protection', false)); ?>>
+                                <span class="checkmark"></span>
+                                <?php echo esc_html__('Enable Real-Time Protection', 'themewire-security'); ?>
+                            </label>
+                            <p class="form-description"><?php echo esc_html__('Advanced real-time threat detection and prevention.', 'themewire-security'); ?></p>
+                        </div>
                     </div>
 
-                    <div class="form-field">
-                        <label for="twss_log_level" class="form-label">
-                            <?php echo esc_html__('Logging Level', 'themewire-security'); ?>
-                        </label>
-                        <select name="twss_log_level" id="twss_log_level" class="form-select">
-                            <option value="debug" <?php selected($current_settings['log_level'], 'debug'); ?>>
-                                <?php echo esc_html__('Debug (Verbose)', 'themewire-security'); ?>
-                            </option>
-                            <option value="info" <?php selected($current_settings['log_level'], 'info'); ?>>
-                                <?php echo esc_html__('Info', 'themewire-security'); ?>
-                            </option>
-                            <option value="warning" <?php selected($current_settings['log_level'], 'warning'); ?>>
-                                <?php echo esc_html__('Warning', 'themewire-security'); ?>
-                            </option>
-                            <option value="error" <?php selected($current_settings['log_level'], 'error'); ?>>
-                                <?php echo esc_html__('Error', 'themewire-security'); ?>
-                            </option>
-                            <option value="critical" <?php selected($current_settings['log_level'], 'critical'); ?>>
-                                <?php echo esc_html__('Critical Only', 'themewire-security'); ?>
-                            </option>
-                        </select>
-                    </div>
-                </div>
+                    <div class="form-row">
+                        <div class="form-field">
+                            <label class="form-checkbox">
+                                <input type="checkbox" name="twss_realtime_file_monitoring" value="1"
+                                    <?php checked(get_option('twss_realtime_file_monitoring', true)); ?>>
+                                <span class="checkmark"></span>
+                                <?php echo esc_html__('File Integrity Monitoring', 'themewire-security'); ?>
+                            </label>
+                            <p class="form-description"><?php echo esc_html__('Monitor file changes in real-time.', 'themewire-security'); ?></p>
+                        </div>
 
-                <div class="form-row">
-                    <div class="form-field">
-                        <label class="form-checkbox">
-                            <input type="checkbox" name="twss_auto_update" value="1" <?php checked($current_settings['auto_update']); ?>>
-                            <span class="checkmark"></span>
-                            <?php echo esc_html__('Automatic Plugin Updates', 'themewire-security'); ?>
-                        </label>
-                        <p class="form-description"><?php echo esc_html__('Automatically update plugin to latest security patches.', 'themewire-security'); ?></p>
+                        <div class="form-field">
+                            <label class="form-checkbox">
+                                <input type="checkbox" name="twss_realtime_database_monitoring" value="1"
+                                    <?php checked(get_option('twss_realtime_database_monitoring', true)); ?>>
+                                <span class="checkmark"></span>
+                                <?php echo esc_html__('Database Injection Protection', 'themewire-security'); ?>
+                            </label>
+                            <p class="form-description"><?php echo esc_html__('Real-time SQL injection detection.', 'themewire-security'); ?></p>
+                        </div>
                     </div>
 
-                    <div class="form-field">
-                        <label class="form-checkbox">
-                            <input type="checkbox" name="twss_remove_data_on_uninstall" value="1" <?php checked($current_settings['remove_data_on_uninstall']); ?>>
-                            <span class="checkmark"></span>
-                            <?php echo esc_html__('Remove Data on Uninstall', 'themewire-security'); ?>
-                        </label>
-                        <p class="form-description"><?php echo esc_html__('Delete all plugin data when uninstalling (cannot be undone).', 'themewire-security'); ?></p>
+                    <div class="form-row">
+                        <div class="form-field">
+                            <label class="form-checkbox">
+                                <input type="checkbox" name="twss_realtime_waf_enabled" value="1"
+                                    <?php checked(get_option('twss_realtime_waf_enabled', true)); ?>>
+                                <span class="checkmark"></span>
+                                <?php echo esc_html__('Web Application Firewall (WAF)', 'themewire-security'); ?>
+                            </label>
+                            <p class="form-description"><?php echo esc_html__('Virtual patching and malicious request blocking.', 'themewire-security'); ?></p>
+                        </div>
+
+                        <div class="form-field">
+                            <label class="form-checkbox">
+                                <input type="checkbox" name="twss_realtime_rate_limiting" value="1"
+                                    <?php checked(get_option('twss_realtime_rate_limiting', true)); ?>>
+                                <span class="checkmark"></span>
+                                <?php echo esc_html__('Rate Limiting', 'themewire-security'); ?>
+                            </label>
+                            <p class="form-description"><?php echo esc_html__('Prevent brute force and excessive requests.', 'themewire-security'); ?></p>
+                        </div>
+                    </div>
+
+                    <div class="form-row">
+                        <div class="form-field">
+                            <label class="form-checkbox">
+                                <input type="checkbox" name="twss_realtime_ip_reputation" value="1"
+                                    <?php checked(get_option('twss_realtime_ip_reputation', true)); ?>>
+                                <span class="checkmark"></span>
+                                <?php echo esc_html__('IP Reputation Blocking', 'themewire-security'); ?>
+                            </label>
+                            <p class="form-description"><?php echo esc_html__('Block known malicious IP addresses.', 'themewire-security'); ?></p>
+                        </div>
+
+                        <div class="form-field">
+                            <label class="form-checkbox">
+                                <input type="checkbox" name="twss_realtime_behavioral_analysis" value="1"
+                                    <?php checked(get_option('twss_realtime_behavioral_analysis', true)); ?>>
+                                <span class="checkmark"></span>
+                                <?php echo esc_html__('Behavioral Anomaly Detection', 'themewire-security'); ?>
+                            </label>
+                            <p class="form-description"><?php echo esc_html__('Detect suspicious user behavior patterns.', 'themewire-security'); ?></p>
+                        </div>
+                    </div>
+
+                    <div class="form-row">
+                        <div class="form-field">
+                            <label for="twss_realtime_max_file_size" class="form-label">
+                                <?php echo esc_html__('Max File Size for Monitoring (MB)', 'themewire-security'); ?>
+                            </label>
+                            <input type="number" name="twss_realtime_max_file_size" id="twss_realtime_max_file_size"
+                                class="form-input" value="<?php echo esc_attr(get_option('twss_realtime_max_file_size', 10)); ?>" min="1" max="100">
+                            <p class="form-description"><?php echo esc_html__('Maximum file size to monitor in real-time.', 'themewire-security'); ?></p>
+                        </div>
+
+                        <div class="form-field">
+                            <label for="twss_realtime_monitoring_interval" class="form-label">
+                                <?php echo esc_html__('Monitoring Interval (seconds)', 'themewire-security'); ?>
+                            </label>
+                            <input type="number" name="twss_realtime_monitoring_interval" id="twss_realtime_monitoring_interval"
+                                class="form-input" value="<?php echo esc_attr(get_option('twss_realtime_monitoring_interval', 30)); ?>" min="10" max="300">
+                            <p class="form-description"><?php echo esc_html__('How often to check for threats (10-300 seconds).', 'themewire-security'); ?></p>
+                        </div>
                     </div>
                 </div>
             </div>
-        </div>
 
-        <div class="form-actions">
-            <button type="submit" name="twss_settings_submit" class="btn-primary">
-                <?php echo esc_html__('Save Settings', 'themewire-security'); ?>
-            </button>
-            <a href="<?php echo esc_url(admin_url('admin.php?page=themewire-security-scan')); ?>" class="btn-secondary">
-                <?php echo esc_html__('Test Configuration', 'themewire-security'); ?>
-            </a>
-        </div>
+            <!-- Advanced Settings -->
+            <div class="card">
+                <h2 class="card-title"><?php echo esc_html__('Advanced Settings', 'themewire-security'); ?></h2>
+
+                <div class="form-section">
+                    <div class="form-row">
+                        <div class="form-field">
+                            <label class="form-checkbox">
+                                <input type="checkbox" name="twss_enable_logging" value="1" <?php checked($current_settings['enable_logging']); ?>>
+                                <span class="checkmark"></span>
+                                <?php echo esc_html__('Enable Security Logging', 'themewire-security'); ?>
+                            </label>
+                            <p class="form-description"><?php echo esc_html__('Log security scan activities and events.', 'themewire-security'); ?></p>
+                        </div>
+
+                        <div class="form-field">
+                            <label for="twss_log_level" class="form-label">
+                                <?php echo esc_html__('Logging Level', 'themewire-security'); ?>
+                            </label>
+                            <select name="twss_log_level" id="twss_log_level" class="form-select">
+                                <option value="debug" <?php selected($current_settings['log_level'], 'debug'); ?>>
+                                    <?php echo esc_html__('Debug (Verbose)', 'themewire-security'); ?>
+                                </option>
+                                <option value="info" <?php selected($current_settings['log_level'], 'info'); ?>>
+                                    <?php echo esc_html__('Info', 'themewire-security'); ?>
+                                </option>
+                                <option value="warning" <?php selected($current_settings['log_level'], 'warning'); ?>>
+                                    <?php echo esc_html__('Warning', 'themewire-security'); ?>
+                                </option>
+                                <option value="error" <?php selected($current_settings['log_level'], 'error'); ?>>
+                                    <?php echo esc_html__('Error', 'themewire-security'); ?>
+                                </option>
+                                <option value="critical" <?php selected($current_settings['log_level'], 'critical'); ?>>
+                                    <?php echo esc_html__('Critical Only', 'themewire-security'); ?>
+                                </option>
+                            </select>
+                        </div>
+                    </div>
+
+                    <div class="form-row">
+                        <div class="form-field">
+                            <label class="form-checkbox">
+                                <input type="checkbox" name="twss_auto_update" value="1" <?php checked($current_settings['auto_update']); ?>>
+                                <span class="checkmark"></span>
+                                <?php echo esc_html__('Automatic Plugin Updates', 'themewire-security'); ?>
+                            </label>
+                            <p class="form-description"><?php echo esc_html__('Automatically update plugin to latest security patches.', 'themewire-security'); ?></p>
+                        </div>
+
+                        <div class="form-field">
+                            <label class="form-checkbox">
+                                <input type="checkbox" name="twss_remove_data_on_uninstall" value="1" <?php checked($current_settings['remove_data_on_uninstall']); ?>>
+                                <span class="checkmark"></span>
+                                <?php echo esc_html__('Remove Data on Uninstall', 'themewire-security'); ?>
+                            </label>
+                            <p class="form-description"><?php echo esc_html__('Delete all plugin data when uninstalling (cannot be undone).', 'themewire-security'); ?></p>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <div class="form-actions">
+                <button type="submit" name="twss_settings_submit" class="btn-primary">
+                    <?php echo esc_html__('Save Settings', 'themewire-security'); ?>
+                </button>
+                <a href="<?php echo esc_url(admin_url('admin.php?page=themewire-security-scan')); ?>" class="btn-secondary">
+                    <?php echo esc_html__('Test Configuration', 'themewire-security'); ?>
+                </a>
+            </div>
     </form>
 </div>
 

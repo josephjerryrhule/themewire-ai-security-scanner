@@ -2594,18 +2594,69 @@ class Themewire_Security_Scanner
     }
 
     /**
-     * Auto-fix issues if enabled
+     * Auto-fix issues if enabled with AI-enhanced patches
      *
-     * @since    1.0.0
+     * @since    1.0.52
      * @param    int    $scan_id    The ID of the current scan
      */
     private function auto_fix_issues($scan_id)
     {
         // Get confirmed issues with suggested fixes
         $issues = $this->database->get_fixable_issues($scan_id);
+        $fixes_applied = 0;
 
         foreach ($issues as $issue) {
-            $this->fixer->fix_issue($scan_id, $issue['file_path'], $issue['suggested_fix']);
+            // Check if this is a malware issue that can be automatically fixed
+            if ($issue['suggested_fix'] === 'fix' && $issue['type'] === 'malware') {
+                // Re-analyze the file with AI to get a fix patch
+                $ai_result = $this->ai_analyzer->analyze_file($issue['file_path']);
+
+                if ($ai_result && isset($ai_result['fix_patch']) && !empty($ai_result['fix_patch'])) {
+                    // Apply the AI-generated patch
+                    $fix_result = $this->fixer->fix_issue($scan_id, $issue['file_path'], $issue['suggested_fix'], $ai_result['fix_patch']);
+
+                    if ($fix_result['success']) {
+                        $fixes_applied++;
+
+                        // Log the successful auto-fix
+                        if ($this->logger) {
+                            $this->logger->info('Auto-fixed malware issue using AI patch', array(
+                                'file' => $issue['file_path'],
+                                'scan_id' => $scan_id,
+                                'patch_applied' => true
+                            ));
+                        }
+
+                        // Update issue status
+                        $this->database->mark_issue_as_fixed($issue['id']);
+                    }
+                } else {
+                    // Fallback to standard fix without AI patch
+                    $fix_result = $this->fixer->fix_issue($scan_id, $issue['file_path'], $issue['suggested_fix']);
+
+                    if ($fix_result['success']) {
+                        $fixes_applied++;
+                        $this->database->mark_issue_as_fixed($issue['id']);
+                    }
+                }
+            } else {
+                // Apply standard fix for non-malware issues
+                $fix_result = $this->fixer->fix_issue($scan_id, $issue['file_path'], $issue['suggested_fix']);
+
+                if ($fix_result['success']) {
+                    $fixes_applied++;
+                    $this->database->mark_issue_as_fixed($issue['id']);
+                }
+            }
+        }
+
+        // Log auto-fix summary
+        if ($this->logger && $fixes_applied > 0) {
+            $this->logger->info("Auto-fix completed: {$fixes_applied} issues resolved automatically", array(
+                'scan_id' => $scan_id,
+                'total_issues' => count($issues),
+                'fixes_applied' => $fixes_applied
+            ));
         }
     }
 

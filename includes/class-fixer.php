@@ -55,15 +55,16 @@ class Themewire_Security_Fixer
     }
 
     /**
-     * Fix an issue
+     * Fix an issue with AI-enhanced patch application
      *
      * @since    1.0.0
      * @param    int       $scan_id          The scan ID
      * @param    string    $file_path        Path to the file
      * @param    string    $suggested_fix    The suggested fix type
+     * @param    string    $fix_patch        AI-generated fix patch (optional)
      * @return   array     Result of the fix operation
      */
-    public function fix_issue($scan_id, $file_path, $suggested_fix)
+    public function fix_issue($scan_id, $file_path, $suggested_fix, $fix_patch = '')
     {
         if (!file_exists($file_path)) {
             return array(
@@ -80,7 +81,7 @@ class Themewire_Security_Fixer
                 return $this->delete_file($scan_id, $file_path);
 
             case 'fix':
-                return $this->attempt_to_fix_file($scan_id, $file_path);
+                return $this->apply_ai_fix_patch($scan_id, $file_path, $fix_patch);
 
             default:
                 return array(
@@ -351,6 +352,167 @@ class Themewire_Security_Fixer
         $content = preg_replace('/window\.location\s*=\s*[\'"][^"\']+[\'"]\s*;/i', '// Suspicious redirect removed by Themewire Security', $content);
 
         return $content;
+    }
+
+    /**
+     * Apply AI-generated fix patch to a file
+     *
+     * @since    1.0.52
+     * @param    int       $scan_id      The scan ID
+     * @param    string    $file_path    Path to the file
+     * @param    string    $fix_patch    AI-generated fix patch
+     * @return   array     Result of the fix operation
+     */
+    public function apply_ai_fix_patch($scan_id, $file_path, $fix_patch)
+    {
+        if (empty($fix_patch)) {
+            // Fallback to standard fix attempt
+            return $this->attempt_to_fix_file($scan_id, $file_path);
+        }
+
+        // Read original file content
+        $original_content = file_get_contents($file_path);
+        if ($original_content === false) {
+            return array(
+                'success' => false,
+                'message' => __('Failed to read file content', 'themewire-security')
+            );
+        }
+
+        // Backup the file first
+        $backup_result = $this->quarantine_file($scan_id, $file_path);
+        if (!$backup_result['success']) {
+            return array(
+                'success' => false,
+                'message' => __('Failed to backup file before applying patch', 'themewire-security')
+            );
+        }
+
+        try {
+            $fixed_content = $this->process_ai_patch($original_content, $fix_patch);
+
+            if ($fixed_content === false) {
+                return array(
+                    'success' => false,
+                    'message' => __('Failed to process AI fix patch', 'themewire-security')
+                );
+            }
+
+            // Write the fixed content back to the file
+            if (file_put_contents($file_path, $fixed_content)) {
+                return array(
+                    'success' => true,
+                    'message' => __('AI patch applied successfully', 'themewire-security'),
+                    'backup_path' => $backup_result['quarantine_path']
+                );
+            } else {
+                return array(
+                    'success' => false,
+                    'message' => __('Failed to write patched content to file', 'themewire-security')
+                );
+            }
+        } catch (Exception $e) {
+            return array(
+                'success' => false,
+                'message' => sprintf(__('Error applying AI patch: %s', 'themewire-security'), $e->getMessage())
+            );
+        }
+    }
+
+    /**
+     * Process AI patch instructions
+     *
+     * @since    1.0.52
+     * @param    string    $content      Original file content
+     * @param    string    $fix_patch    AI-generated fix patch
+     * @return   string|false    Fixed content or false on failure
+     */
+    private function process_ai_patch($content, $fix_patch)
+    {
+        // Check for line deletion instructions
+        if (preg_match('/DELETE_LINES:\s*\[([0-9,\s]+)\]/', $fix_patch, $matches)) {
+            $lines_to_delete = array_map('trim', explode(',', $matches[1]));
+            $lines_to_delete = array_map('intval', $lines_to_delete);
+            return $this->delete_specific_lines($content, $lines_to_delete);
+        }
+
+        // Check if it's a complete file replacement
+        if (strpos($fix_patch, '<?php') !== false && strlen($fix_patch) > 100) {
+            // This appears to be a complete cleaned file
+            return $fix_patch;
+        }
+
+        // Check for search and replace patterns
+        if (preg_match_all('/REPLACE:\s*"([^"]+)"\s*WITH:\s*"([^"]*)"/', $fix_patch, $matches, PREG_SET_ORDER)) {
+            $fixed_content = $content;
+            foreach ($matches as $match) {
+                $search = stripslashes($match[1]);
+                $replace = stripslashes($match[2]);
+                $fixed_content = str_replace($search, $replace, $fixed_content);
+            }
+            return $fixed_content;
+        }
+
+        // For other types of patches, try to apply them as code replacements
+        return $this->apply_code_replacement($content, $fix_patch);
+    }
+
+    /**
+     * Delete specific lines from content
+     *
+     * @since    1.0.52
+     * @param    string    $content         Original content
+     * @param    array     $lines_to_delete Array of line numbers to delete (1-indexed)
+     * @return   string    Content with lines removed
+     */
+    private function delete_specific_lines($content, $lines_to_delete)
+    {
+        $lines = explode("\n", $content);
+
+        // Convert to 0-indexed and sort in reverse order to avoid index shifting
+        $lines_to_delete = array_map(function ($line) {
+            return $line - 1;
+        }, $lines_to_delete);
+        rsort($lines_to_delete);
+
+        foreach ($lines_to_delete as $line_index) {
+            if (isset($lines[$line_index])) {
+                unset($lines[$line_index]);
+            }
+        }
+
+        return implode("\n", $lines);
+    }
+
+    /**
+     * Apply code replacement from AI patch
+     *
+     * @since    1.0.52
+     * @param    string    $content    Original content
+     * @param    string    $patch      Replacement code
+     * @return   string    Fixed content
+     */
+    private function apply_code_replacement($content, $patch)
+    {
+        // For now, use the basic malware removal patterns as fallback
+        // This can be enhanced with more sophisticated pattern matching
+        $fixed_content = $content;
+
+        // Remove common malware patterns
+        $malware_patterns = array(
+            '/eval\s*\(\s*base64_decode\s*\([^)]+\)\s*\)\s*;?/i',
+            '/eval\s*\(\s*gzinflate\s*\([^)]+\)\s*\)\s*;?/i',
+            '/eval\s*\(\s*str_rot13\s*\([^)]+\)\s*\)\s*;?/i',
+            '/system\s*\(\s*\$_[GET|POST|REQUEST]\s*\[[^]]+\]\s*\)\s*;?/i',
+            '/exec\s*\(\s*\$_[GET|POST|REQUEST]\s*\[[^]]+\]\s*\)\s*;?/i',
+            '/shell_exec\s*\(\s*\$_[GET|POST|REQUEST]\s*\[[^]]+\]\s*\)\s*;?/i',
+        );
+
+        foreach ($malware_patterns as $pattern) {
+            $fixed_content = preg_replace($pattern, '/* Malicious code removed by Themewire AI Security */', $fixed_content);
+        }
+
+        return $fixed_content;
     }
 
     /**

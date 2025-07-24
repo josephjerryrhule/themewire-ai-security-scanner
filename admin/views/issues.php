@@ -89,6 +89,30 @@ function is_wordpress_core_file($file_path)
 <div class="wrap themewire-security-wrap">
     <div style="margin-bottom: 20px;">
         <h1><?php _e('Security Issues', 'themewire-security'); ?></h1>
+
+        <!-- AI Auto-Fix Mode Toggle -->
+        <div class="ai-autofix-toggle" style="margin: 15px 0; padding: 15px; background: linear-gradient(135deg, #FF7342, #ff8c5c); border-radius: 8px; box-shadow: 0 2px 6px rgba(255, 115, 66, 0.3);">
+            <div style="display: flex; align-items: center; justify-content: space-between; color: white;">
+                <div style="display: flex; align-items: center; gap: 12px;">
+                    <span style="font-size: 24px;">🤖</span>
+                    <div>
+                        <h3 style="margin: 0; font-size: 16px; font-weight: 600;"><?php _e('AI Auto-Fix Mode', 'themewire-security'); ?></h3>
+                        <p style="margin: 0; font-size: 13px; opacity: 0.9;"><?php _e('Automatically fix malware using AI analysis', 'themewire-security'); ?></p>
+                    </div>
+                </div>
+                <div style="display: flex; align-items: center; gap: 15px;">
+                    <label class="toggle-switch" style="position: relative; display: inline-block; width: 60px; height: 34px;">
+                        <input type="checkbox" id="global-autofix-toggle" <?php checked(get_option('twss_auto_fix', false)); ?> style="opacity: 0; width: 0; height: 0;">
+                        <span class="toggle-slider" style="position: absolute; cursor: pointer; top: 0; left: 0; right: 0; bottom: 0; background-color: rgba(255,255,255,0.3); transition: .4s; border-radius: 34px; 
+                            &:before { content: ''; position: absolute; height: 26px; width: 26px; left: 4px; bottom: 4px; background-color: white; transition: .4s; border-radius: 50%; }"></span>
+                    </label>
+                    <span style="font-size: 14px; font-weight: 500;" id="autofix-status">
+                        <?php echo get_option('twss_auto_fix', false) ? __('ENABLED', 'themewire-security') : __('DISABLED', 'themewire-security'); ?>
+                    </span>
+                </div>
+            </div>
+        </div>
+
         <?php if (!empty($all_issues)): ?>
             <div>
                 <button id="clear-all-issues-button" class="button button-secondary" style="background-color: #dc3232; border-color: #dc3232; color: white; margin-right: 10px;">

@@ -1796,9 +1796,16 @@ class Themewire_Security_AI_Analyzer
         $prompt .= "CONFIDENCE: [0-100]%\n";
         $prompt .= "EXPLANATION: [Detailed technical explanation of findings]\n";
         $prompt .= "INDICATORS: [Comma-separated list of specific indicators found]\n";
-        $prompt .= "SUGGESTED_ACTION: [quarantine/delete/fix/monitor/none]\n\n";
+        $prompt .= "SUGGESTED_ACTION: [quarantine/delete/fix/monitor/none]\n";
+        $prompt .= "FIX_PATCH: [If SUGGESTED_ACTION is 'fix', provide the exact corrected code snippet or specific removal instructions]\n\n";
 
-        $prompt .= "IMPORTANT: Base your analysis on concrete evidence. If the file appears to be minified but legitimate, or if obfuscation serves a legitimate purpose (like code protection), do not flag it as malicious.";
+        $prompt .= "IMPORTANT: Base your analysis on concrete evidence. If the file appears to be minified but legitimate, or if obfuscation serves a legitimate purpose (like code protection), do not flag it as malicious.\n\n";
+
+        $prompt .= "FOR FIX_PATCH:\n";
+        $prompt .= "- If malicious code can be safely removed, provide the cleaned code\n";
+        $prompt .= "- If entire lines should be deleted, specify 'DELETE_LINES: [line_numbers]'\n";
+        $prompt .= "- If code needs to be replaced, provide the exact replacement\n";
+        $prompt .= "- Only provide patches for obvious malware, not for suspicious-but-uncertain code\n";
 
         return $prompt;
     }
@@ -1878,6 +1885,13 @@ class Themewire_Security_AI_Analyzer
                     $result['suggested_fix'] = 'quarantine';
                 }
             }
+        }
+
+        // Parse FIX_PATCH field
+        if (preg_match('/FIX_PATCH:\s*(.+?)(?=\n\n|\n[A-Z]+:|\nIMPORTANT:|$)/is', $response, $matches)) {
+            $result['fix_patch'] = trim($matches[1]);
+        } else {
+            $result['fix_patch'] = '';
         }
 
         return $result;

@@ -3,8 +3,8 @@
 /**
  * Plugin Name: Themewire AI Security Scanner
  * Plugin URI: https://github.com/josephjerryrhule/themewire-ai-security-scanner
- * Description: Advanced AI-powered WordPress security scanner with malware detection, threat analysis, and automatic remediation. Features comprehensive scanning, real-time monitoring, and intelligent threat detection using multiple AI providers.
- * Version: 1.0.51
+ * Description: Advanced AI-powered WordPress security scanner with automatic malware detection, intelligent patching, and real-time threat remediation. Features comprehensive scanning, AI-enhanced auto-fix capabilities, and production-grade security hardening using multiple AI providers (OpenAI, Gemini, OpenRouter, GroqCloud).
+ * Version: 1.0.52
  * Author: Themewire
  * Author URI: https://themewire.co
  * License: GPL-2.0+
@@ -22,7 +22,7 @@ if (!defined('WPINC')) {
 
 //Define plugin constants
 define('THEMEWIRE_SECURITY_VERSION', '1.0.50');
-define('TWSS_VERSION', '1.0.51');
+define('TWSS_VERSION', '1.0.52');
 define('TWSS_PLUGIN_DIR', plugin_dir_path(__FILE__));
 define('TWSS_PLUGIN_URL', plugin_dir_url(__FILE__));
 define('TWSS_PLUGIN_BASENAME', plugin_basename(__FILE__));
@@ -90,9 +90,15 @@ require_once TWSS_PLUGIN_DIR . 'includes/class-themewire-security.php';
  */
 function run_themewire_security_scanner()
 {
+    // Prevent multiple instances
+    static $plugin_instance = null;
+    if ($plugin_instance !== null) {
+        return;
+    }
+
     try {
-        $plugin = new Themewire_Security();
-        $plugin->run();
+        $plugin_instance = new Themewire_Security();
+        $plugin_instance->run();
     } catch (Exception $e) {
         error_log('Themewire Security Scanner error: ' . $e->getMessage());
 

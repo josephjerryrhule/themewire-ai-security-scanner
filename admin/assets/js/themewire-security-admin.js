@@ -94,6 +94,12 @@
       }
     });
 
+    // Handle Global Auto-Fix Toggle
+    $("#global-autofix-toggle").on("change", function () {
+      console.log("Global auto-fix toggle clicked");
+      toggleGlobalAutoFix($(this).prop("checked"));
+    });
+
     // AI Connection Testing
     setupAIConnectionTesting();
 
@@ -3319,4 +3325,137 @@
       },
     });
   });
+  /**
+   * Toggle global auto-fix mode
+   *
+   * @param {boolean} enabled - Whether auto-fix should be enabled
+   */
+  function toggleGlobalAutoFix(enabled) {
+    $.ajax({
+      url: twss_data.ajax_url,
+      type: "POST",
+      data: {
+        action: "twss_toggle_auto_fix",
+        enabled: enabled ? 1 : 0,
+        nonce: twss_data.nonce,
+      },
+      success: function (response) {
+        if (response.success) {
+          // Update the status text
+          $("#autofix-status").text(enabled ? "ENABLED" : "DISABLED");
+
+          // Update toggle slider appearance
+          updateToggleSlider(enabled);
+
+          // Show success notification
+          showAutoFixNotification(
+            enabled
+              ? "🤖 AI Auto-Fix Mode Enabled - Malware will be automatically patched during scans"
+              : "⏸️ AI Auto-Fix Mode Disabled - Manual review required for detected issues",
+            enabled ? "success" : "info"
+          );
+        } else {
+          // Revert toggle on failure
+          $("#global-autofix-toggle").prop("checked", !enabled);
+          showAutoFixNotification(
+            "❌ Failed to update auto-fix setting: " +
+              (response.data.message || "Unknown error"),
+            "error"
+          );
+        }
+      },
+      error: function () {
+        // Revert toggle on error
+        $("#global-autofix-toggle").prop("checked", !enabled);
+        showAutoFixNotification(
+          "❌ Network error occurred while updating auto-fix setting",
+          "error"
+        );
+      },
+    });
+  }
+
+  /**
+   * Update toggle slider appearance
+   *
+   * @param {boolean} enabled - Whether auto-fix is enabled
+   */
+  function updateToggleSlider(enabled) {
+    const slider = $(".toggle-slider");
+    if (enabled) {
+      slider.css("background-color", "rgba(255,255,255,0.8)");
+      slider.find("&:before").css("transform", "translateX(26px)");
+    } else {
+      slider.css("background-color", "rgba(255,255,255,0.3)");
+      slider.find("&:before").css("transform", "translateX(0px)");
+    }
+  }
+
+  /**
+   * Show auto-fix notification
+   *
+   * @param {string} message - Notification message
+   * @param {string} type - Notification type (success, error, info)
+   */
+  function showAutoFixNotification(message, type) {
+    // Remove existing notifications
+    $(".autofix-notification").remove();
+
+    // Create notification element
+    const notification = $(`
+      <div class="autofix-notification notice notice-${type}" style="
+        position: fixed;
+        top: 32px;
+        right: 20px;
+        z-index: 9999;
+        max-width: 400px;
+        box-shadow: 0 4px 12px rgba(0,0,0,0.15);
+        border-left-width: 4px;
+        animation: slideInRight 0.3s ease-out;
+      ">
+        <p style="margin: 8px 0; font-weight: 500;">${message}</p>
+      </div>
+    `);
+
+    // Add to page
+    $("body").append(notification);
+
+    // Auto-remove after 5 seconds
+    setTimeout(() => {
+      notification.fadeOut(300, () => notification.remove());
+    }, 5000);
+  }
+
+  // Add CSS animation for notifications
+  $("<style>")
+    .prop("type", "text/css")
+    .html(
+      `
+      @keyframes slideInRight {
+        from { transform: translateX(100%); opacity: 0; }
+        to { transform: translateX(0); opacity: 1; }
+      }
+      
+      .toggle-slider:before {
+        content: '';
+        position: absolute;
+        height: 26px;
+        width: 26px;
+        left: 4px;
+        bottom: 4px;
+        background-color: white;
+        transition: .4s;
+        border-radius: 50%;
+      }
+      
+      input:checked + .toggle-slider {
+        background-color: rgba(255,255,255,0.8) !important;
+      }
+      
+      input:checked + .toggle-slider:before {
+        transform: translateX(26px);
+      }
+    `
+    )
+    .appendTo("head");
 })(jQuery);

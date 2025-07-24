@@ -85,6 +85,7 @@ class Themewire_Security
         require_once TWSS_PLUGIN_DIR . 'includes/class-fixer.php';
         require_once TWSS_PLUGIN_DIR . 'includes/class-scheduler.php';
         require_once TWSS_PLUGIN_DIR . 'includes/class-database.php';
+        require_once TWSS_PLUGIN_DIR . 'includes/class-real-time-protection.php';
 
         $this->loader = new Themewire_Security_Loader();
     }
@@ -142,6 +143,7 @@ class Themewire_Security
         add_action('wp_ajax_twss_test_connection', array($plugin_admin, 'ajax_test_connection'));
         add_action('wp_ajax_twss_analyze_issue', array($plugin_admin, 'ajax_analyze_issue'));
         add_action('wp_ajax_twss_cleanup_ghost_files', array($plugin_admin, 'ajax_cleanup_ghost_files'));
+        add_action('wp_ajax_twss_toggle_auto_fix', array($plugin_admin, 'ajax_toggle_auto_fix'));
 
         // Debug: Log that handlers are registered
         if (defined('WP_DEBUG') && WP_DEBUG) {
@@ -166,12 +168,34 @@ class Themewire_Security
     }
 
     /**
+     * Register all of the hooks related to real-time protection.
+     *
+     * @since    1.0.52
+     * @access   private
+     */
+    private function define_realtime_protection_hooks()
+    {
+        // Only enable real-time protection if enabled in settings
+        $enable_realtime = get_option('twss_enable_realtime_protection', false);
+
+        if ($enable_realtime) {
+            $realtime_protection = new Themewire_Security_Real_Time_Protection();
+            $realtime_protection->init();
+        }
+    }
+
+    /**
      * Run the loader to execute all hooks.
      *
      * @since    1.0.0
      */
     public function run()
     {
+        $this->set_locale();
+        $this->define_admin_hooks();
+        $this->define_scanner_hooks();
+        $this->define_realtime_protection_hooks();
+
         $this->loader->run();
     }
 

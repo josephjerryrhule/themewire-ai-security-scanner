@@ -649,6 +649,13 @@ class Themewire_Security_Admin
      */
     public function add_plugin_admin_menu()
     {
+        // Prevent duplicate menu registration
+        static $menu_added = false;
+        if ($menu_added) {
+            return;
+        }
+        $menu_added = true;
+
         // Main menu
         add_menu_page(
             __('Themewire AI Security', 'themewire-security'),
@@ -742,6 +749,8 @@ class Themewire_Security_Admin
 
         register_setting('twss_settings', 'twss_scheduled_time');
         register_setting('twss_settings', 'twss_auto_fix');
+        register_setting('twss_settings', 'twss_ai_fix_aggressive');
+        register_setting('twss_settings', 'twss_quarantine_threats');
         register_setting('twss_settings', 'twss_send_email');
         register_setting('twss_settings', 'twss_remove_data_on_uninstall');
         register_setting('twss_settings', 'twss_auto_update');
@@ -1376,5 +1385,34 @@ class Themewire_Security_Admin
 
         // Generic fallback for unhandled errors (but don't expose technical details)
         return __('An unexpected error occurred during the security scan. Please try again or contact support if the issue persists.', 'themewire-security');
+    }
+
+    /**
+     * AJAX handler for toggling global auto-fix mode
+     *
+     * @since    1.0.52
+     */
+    public function ajax_toggle_auto_fix()
+    {
+        check_ajax_referer('twss_nonce', 'nonce');
+
+        if (!current_user_can('manage_options')) {
+            wp_send_json_error(array('message' => __('You do not have permission to perform this action', 'themewire-security')));
+        }
+
+        $enabled = isset($_POST['enabled']) ? intval($_POST['enabled']) : 0;
+
+        $result = update_option('twss_auto_fix', (bool)$enabled);
+
+        if ($result !== false) {
+            wp_send_json_success(array(
+                'message' => $enabled
+                    ? __('AI Auto-Fix Mode enabled successfully', 'themewire-security')
+                    : __('AI Auto-Fix Mode disabled successfully', 'themewire-security'),
+                'enabled' => (bool)$enabled
+            ));
+        } else {
+            wp_send_json_error(array('message' => __('Failed to update auto-fix setting', 'themewire-security')));
+        }
     }
 }
